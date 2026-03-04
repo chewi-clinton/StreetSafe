@@ -18,7 +18,7 @@
     <string name="subject_name_hint">e.g. Mathematics</string>
     <string name="score">Score</string>
     <string name="score_hint">e.g. 85</string>
-    <string name="add_subject">+ Add Another Subject</string>
+    <string name="add_subject">+ Add Another Score</string>
     <string name="calculate_results">Calculate Results</string>
 
     <!-- Results -->
@@ -37,6 +37,6 @@
     <!-- General -->
     <string name="back">Back</string>
     <string name="error_empty_name">Please enter a student name</string>
-    <string name="error_no_subjects">Please add at least one subject</string>
+    <string name="error_no_subjects">Please add at least one score</string>
     <string name="error_invalid_score">Score must be between 0 and 100</string>
 </resources>

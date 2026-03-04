@@ -105,7 +105,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Subject Breakdown"
+                android:text="Score Breakdown"
                 android:textSize="18sp"
                 android:textColor="@color/text_primary"
                 android:fontFamily="sans-serif-medium"

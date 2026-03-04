@@ -61,7 +61,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="\uD83D\uDCC4"
+                        android:text="XL"
                         android:textSize="24sp" />
                 </FrameLayout>
 
@@ -127,7 +127,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="\u270F\uFE0F"
+                        android:text="A+"
                         android:textSize="24sp" />
                 </FrameLayout>
 

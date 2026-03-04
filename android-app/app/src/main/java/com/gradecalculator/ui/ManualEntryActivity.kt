@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.gradecalculator.R
 import com.gradecalculator.databinding.ActivityManualEntryBinding
@@ -16,7 +15,8 @@ import com.gradecalculator.model.SubjectScore
 class ManualEntryActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityManualEntryBinding
-    private val subjectViews = mutableListOf<View>()
+    private val scoreViews = mutableListOf<View>()
+    private var scoreCounter = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,25 +25,27 @@ class ManualEntryActivity : AppCompatActivity() {
 
         binding.btnBack.setOnClickListener { finish() }
 
-        // Add initial subject row
-        addSubjectRow()
+        addScoreRow()
 
-        binding.btnAddSubject.setOnClickListener { addSubjectRow() }
+        binding.btnAddSubject.setOnClickListener { addScoreRow() }
         binding.btnCalculate.setOnClickListener { calculateResults() }
     }
 
-    private fun addSubjectRow() {
+    private fun addScoreRow() {
+        scoreCounter++
         val view = LayoutInflater.from(this)
             .inflate(R.layout.item_subject_row, binding.subjectsContainer, false)
+
+        view.findViewById<TextView>(R.id.tvScoreLabel).text = "Score $scoreCounter"
 
         val btnDelete = view.findViewById<TextView>(R.id.btnDelete)
         btnDelete.setOnClickListener {
             binding.subjectsContainer.removeView(view)
-            subjectViews.remove(view)
+            scoreViews.remove(view)
         }
 
         binding.subjectsContainer.addView(view)
-        subjectViews.add(view)
+        scoreViews.add(view)
     }
 
     private fun calculateResults() {
@@ -57,13 +59,11 @@ class ManualEntryActivity : AppCompatActivity() {
 
         val scores = mutableListOf<SubjectScore>()
 
-        for (view in subjectViews) {
-            val subjectName = view.findViewById<EditText>(R.id.etSubjectName)
-                .text.toString().trim()
+        for ((index, view) in scoreViews.withIndex()) {
             val scoreText = view.findViewById<EditText>(R.id.etScore)
                 .text.toString().trim()
 
-            if (subjectName.isEmpty() || scoreText.isEmpty()) continue
+            if (scoreText.isEmpty()) continue
 
             val score = scoreText.toIntOrNull()
             if (score == null || score < 0 || score > 100) {
@@ -71,7 +71,7 @@ class ManualEntryActivity : AppCompatActivity() {
                 return
             }
 
-            scores.add(SubjectScore(subjectName, score))
+            scores.add(SubjectScore("Score ${index + 1}", score))
         }
 
         if (scores.isEmpty()) {

@@ -14,21 +14,21 @@ class MainActivity : AppCompatActivity() {
 
     private val sampleStudents = listOf(
         Student("Alice", mutableListOf(
-            SubjectScore("Math", 85), SubjectScore("Science", 92),
-            SubjectScore("English", 78), SubjectScore("History", 90)
+            SubjectScore("Score 1", 85), SubjectScore("Score 2", 92),
+            SubjectScore("Score 3", 78), SubjectScore("Score 4", 90)
         )),
         Student("Bob", mutableListOf(
-            SubjectScore("Math", 55), SubjectScore("Science", 63),
-            SubjectScore("English", 48), SubjectScore("History", 70)
+            SubjectScore("Score 1", 55), SubjectScore("Score 2", 63),
+            SubjectScore("Score 3", 48), SubjectScore("Score 4", 70)
         )),
         Student("Charlie"),
         Student("Diana", mutableListOf(
-            SubjectScore("Math", 95), SubjectScore("Science", 98),
-            SubjectScore("English", 100), SubjectScore("History", 92)
+            SubjectScore("Score 1", 95), SubjectScore("Score 2", 98),
+            SubjectScore("Score 3", 100), SubjectScore("Score 4", 92)
         )),
         Student("Eve", mutableListOf(
-            SubjectScore("Math", 72), SubjectScore("Science", 68),
-            SubjectScore("English", 74), SubjectScore("History", 65)
+            SubjectScore("Score 1", 72), SubjectScore("Score 2", 68),
+            SubjectScore("Score 3", 74), SubjectScore("Score 4", 65)
         ))
     )
 

@@ -74,8 +74,10 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="\uD83D\uDCC1"
-                            android:textSize="40sp" />
+                            android:text="Upload"
+                            android:textSize="18sp"
+                            android:textColor="@color/primary_purple"
+                            android:fontFamily="sans-serif-bold" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -109,8 +111,10 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="\u2705"
-                            android:textSize="18sp"
+                            android:text="OK"
+                            android:textSize="14sp"
+                            android:textColor="@color/success_green"
+                            android:fontFamily="sans-serif-bold"
                             android:paddingEnd="10dp" />
 
                         <TextView

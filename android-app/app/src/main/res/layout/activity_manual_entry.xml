@@ -85,11 +85,11 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- Subjects List Label -->
+            <!-- Scores List Label -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Subjects"
+                android:text="Scores"
                 android:textSize="16sp"
                 android:textColor="@color/text_primary"
                 android:fontFamily="sans-serif-medium"
