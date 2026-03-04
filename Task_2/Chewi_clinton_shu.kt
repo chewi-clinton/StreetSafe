@@ -94,6 +94,71 @@ fun getAtRiskStudents(students: List<Student>): List<Student> {
     return getValidStudents(students).filter { it.scores!!.average() < 60.0 }
 }
 
+// Group students by grade using groupBy
+fun groupStudentsByGrade(students: List<Student>): Map<String, List<Student>> {
+    return getValidStudents(students).groupBy { student ->
+        getGrade(student.scores!!.average())
+    }
+}
+
+// Print grade distribution using groupBy and mapValues
+fun printGradeDistribution(students: List<Student>) {
+    val grouped = groupStudentsByGrade(students)
+    val gradeOrder = listOf("A", "B", "C", "D", "F")
+
+    println("Grade Distribution:")
+    gradeOrder.forEach { grade ->
+        val count = grouped[grade]?.size ?: 0
+        val bar = "*".repeat(count)
+        val names = grouped[grade]?.joinToString(", ") { it.name } ?: "None"
+        println("  $grade: $bar ($count) - $names")
+    }
+}
+
+// Check if all students passed using all
+fun allStudentsPassed(students: List<Student>): Boolean {
+    return getValidStudents(students).all { it.scores!!.average() >= 60.0 }
+}
+
+// Check if any student got an A using any
+fun anyStudentGotA(students: List<Student>): Boolean {
+    return getValidStudents(students).any { it.scores!!.average() >= 90.0 }
+}
+
+// Count students per grade using count
+fun countStudentsWithGrade(students: List<Student>, targetGrade: String): Int {
+    return getValidStudents(students).count { getGrade(it.scores!!.average()) == targetGrade }
+}
+
+// Generate a summary report using multiple collection operations
+fun generateSummaryReport(students: List<Student>) {
+    val valid = getValidStudents(students)
+    if (valid.isEmpty()) {
+        println("No valid student data available.")
+        return
+    }
+
+    println("=== Summary Report ===")
+    println("All students passed: ${if (allStudentsPassed(students)) "Yes" else "No"}")
+    println("Any student got A: ${if (anyStudentGotA(students)) "Yes" else "No"}")
+    println()
+
+    // Use flatMap to get all individual scores across all students
+    val allScores = valid.flatMap { it.scores!! }
+    println("Total individual scores recorded: ${allScores.size}")
+    println("Overall score average: ${"%.1f".format(allScores.average())}")
+    println("Highest individual score: ${allScores.max()}")
+    println("Lowest individual score: ${allScores.min()}")
+    println()
+
+    // Use distinct to find unique grades present
+    val uniqueGrades = valid.map { getGrade(it.scores!!.average()) }.distinct().sorted()
+    println("Grades present: ${uniqueGrades.joinToString(", ")}")
+    println()
+
+    printGradeDistribution(students)
+}
+
 // Print class statistics
 fun printClassStatistics(students: List<Student>) {
     val valid = getValidStudents(students)
@@ -330,7 +395,9 @@ fun main() {
         println("7. View class statistics")
         println("8. View ranked students")
         println("9. View top students")
-        println("10. Exit")
+        println("10. View grade distribution")
+        println("11. Generate summary report")
+        println("12. Exit")
         print("Choose an option: ")
 
         when (readLine()?.trim()) {
@@ -400,6 +467,14 @@ fun main() {
                 }
             }
             "10" -> {
+                println()
+                printGradeDistribution(students)
+            }
+            "11" -> {
+                println()
+                generateSummaryReport(students)
+            }
+            "12" -> {
                 println("Goodbye!")
                 return
             }
