@@ -1,3 +1,9 @@
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.apache.poi.ss.usermodel.*
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+
 // Student data class
 data class Student(
     val name: String,
@@ -44,6 +50,123 @@ fun inputStudent(): Student {
     }
 
     return Student(name, scores)
+}
+
+// Process an Excel file: read students, calculate grades, write back
+fun processExcelFile(inputPath: String): String {
+    val file = File(inputPath)
+    if (!file.exists()) {
+        println("Error: File '$inputPath' not found.")
+        return ""
+    }
+
+    val workbook = XSSFWorkbook(FileInputStream(file))
+    val sheet = workbook.getSheetAt(0)
+
+    // Determine the structure: find Name and Marks columns
+    val headerRow = sheet.getRow(0)
+    if (headerRow == null) {
+        println("Error: Excel file is empty.")
+        workbook.close()
+        return ""
+    }
+
+    var nameCol = -1
+    var marksStartCol = -1
+    var marksEndCol = -1
+
+    // Find columns by header names
+    for (i in 0 until headerRow.lastCellNum) {
+        val cell = headerRow.getCell(i) ?: continue
+        val header = cell.toString().trim().lowercase()
+        when {
+            header == "name" || header == "student name" || header == "student" -> nameCol = i
+            header.contains("mark") || header.contains("score") || header.contains("subject") -> {
+                if (marksStartCol == -1) marksStartCol = i
+                marksEndCol = i
+            }
+        }
+    }
+
+    // If no marks columns found by header, assume column 0 = name, rest = marks
+    if (nameCol == -1) nameCol = 0
+    if (marksStartCol == -1) {
+        marksStartCol = 1
+        marksEndCol = headerRow.lastCellNum.toInt() - 1
+    }
+
+    // Add Average and Grade headers
+    val avgCol = marksEndCol + 1
+    val gradeCol = marksEndCol + 2
+    headerRow.createCell(avgCol).setCellValue("Average")
+    headerRow.createCell(gradeCol).setCellValue("Grade")
+
+    // Style for headers
+    val headerStyle = workbook.createCellStyle()
+    val headerFont = workbook.createFont()
+    headerFont.bold = true
+    headerStyle.setFont(headerFont)
+    headerRow.getCell(avgCol).cellStyle = headerStyle
+    headerRow.getCell(gradeCol).cellStyle = headerStyle
+
+    val studentsProcessed = mutableListOf<String>()
+
+    // Process each student row
+    for (i in 1..sheet.lastRowNum) {
+        val row = sheet.getRow(i) ?: continue
+
+        val nameCell = row.getCell(nameCol)
+        val studentName = nameCell?.toString()?.trim() ?: "Unknown"
+
+        // Collect marks
+        val marks = mutableListOf<Int>()
+        for (col in marksStartCol..marksEndCol) {
+            val cell = row.getCell(col)
+            if (cell != null) {
+                val value = when (cell.cellType) {
+                    CellType.NUMERIC -> cell.numericCellValue.toInt()
+                    CellType.STRING -> cell.toString().trim().toIntOrNull() ?: 0
+                    else -> 0
+                }
+                marks.add(value)
+            }
+        }
+
+        if (marks.isNotEmpty()) {
+            val average = marks.average()
+            val grade = getGrade(average)
+
+            row.createCell(avgCol).setCellValue(average)
+            row.createCell(gradeCol).setCellValue(grade)
+
+            studentsProcessed.add("$studentName: Average = ${"%.1f".format(average)}, Grade = $grade")
+        } else {
+            row.createCell(avgCol).setCellValue("N/A")
+            row.createCell(gradeCol).setCellValue("N/A")
+            studentsProcessed.add("$studentName: No scores available")
+        }
+    }
+
+    // Auto-size columns
+    for (col in 0..gradeCol) {
+        sheet.autoSizeColumn(col)
+    }
+
+    // Save output file
+    val outputFileName = file.nameWithoutExtension + "_graded.xlsx"
+    val outputPath = File(file.parent, outputFileName).absolutePath
+    val outputStream = FileOutputStream(outputPath)
+    workbook.write(outputStream)
+    outputStream.close()
+    workbook.close()
+
+    println("\n=== Excel Processing Results ===")
+    for (result in studentsProcessed) {
+        println(result)
+    }
+    println("\nGraded file saved to: $outputPath")
+
+    return outputPath
 }
 
 // Main function with interactive menu
