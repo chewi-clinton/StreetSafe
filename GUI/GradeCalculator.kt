@@ -1,8 +1,17 @@
 import com.formdev.flatlaf.FlatDarkLaf
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.apache.poi.ss.usermodel.CellType
 import java.awt.*
 import java.awt.event.*
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import javax.swing.*
 import javax.swing.border.EmptyBorder
+import javax.swing.filechooser.FileNameExtensionFilter
+import javax.swing.table.DefaultTableModel
+import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.JTableHeader
 
 // ==================== COLORS & THEME ====================
 object AppColors {
@@ -120,6 +129,7 @@ class Sidebar(private val onNavigate: (String) -> Unit) : JPanel() {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = EmptyBorder(20, 0, 20, 0)
 
+        // App title
         val titlePanel = JPanel(FlowLayout(FlowLayout.CENTER)).apply {
             background = AppColors.surface
             maximumSize = Dimension(220, 80)
@@ -174,9 +184,11 @@ class Sidebar(private val onNavigate: (String) -> Unit) : JPanel() {
                 override fun mouseClicked(e: MouseEvent) {
                     activeItem = id
                     onNavigate(id)
+                    // Refresh sidebar
                     this@Sidebar.removeAll()
                     this@Sidebar.revalidate()
                     this@Sidebar.repaint()
+                    // Rebuild sidebar
                     rebuildSidebar()
                 }
             })
@@ -214,6 +226,105 @@ class Sidebar(private val onNavigate: (String) -> Unit) : JPanel() {
     }
 }
 
+// ==================== DASHBOARD PANEL ====================
+class DashboardPanel(private val students: List<Student>) : JPanel() {
+    init {
+        background = AppColors.background
+        layout = BorderLayout(20, 20)
+        border = EmptyBorder(30, 30, 30, 30)
+
+        // Header
+        val header = JLabel("Dashboard").apply {
+            font = Font("SansSerif", Font.BOLD, 28)
+            foreground = AppColors.textPrimary
+        }
+        add(header, BorderLayout.NORTH)
+
+        // Stats cards
+        val statsPanel = JPanel(GridLayout(1, 4, 15, 0)).apply {
+            isOpaque = false
+        }
+
+        val totalStudents = students.size
+        val avgScore = if (students.any { it.hasScores }) {
+            students.filter { it.hasScores }.map { it.average }.average()
+        } else 0.0
+        val passingCount = students.count { it.hasScores && it.average >= 60 }
+        val topGradeCount = students.count { it.hasScores && it.grade == "A" }
+
+        statsPanel.add(createStatCard("Total Students", "$totalStudents", AppColors.purplePrimary))
+        statsPanel.add(createStatCard("Class Average", "${"%.1f".format(avgScore)}%", AppColors.gradeB))
+        statsPanel.add(createStatCard("Passing", "$passingCount / $totalStudents", AppColors.success))
+        statsPanel.add(createStatCard("Top Grade (A)", "$topGradeCount", AppColors.gradeA))
+
+        // Grade distribution
+        val centerPanel = JPanel(BorderLayout(0, 20)).apply { isOpaque = false }
+        centerPanel.add(statsPanel, BorderLayout.NORTH)
+
+        val distPanel = createGradeDistribution()
+        centerPanel.add(distPanel, BorderLayout.CENTER)
+
+        add(centerPanel, BorderLayout.CENTER)
+    }
+
+    private fun createStatCard(title: String, value: String, accentColor: Color): RoundedPanel {
+        return RoundedPanel().apply {
+            layout = BorderLayout(0, 8)
+            border = EmptyBorder(20, 20, 20, 20)
+            preferredSize = Dimension(0, 120)
+
+            add(JLabel(title).apply {
+                font = Font("SansSerif", Font.PLAIN, 13)
+                foreground = AppColors.textSecondary
+            }, BorderLayout.NORTH)
+
+            add(JLabel(value).apply {
+                font = Font("SansSerif", Font.BOLD, 32)
+                foreground = accentColor
+            }, BorderLayout.CENTER)
+        }
+    }
+
+    private fun createGradeDistribution(): RoundedPanel {
+        val grades = listOf("A", "B", "C", "D", "F")
+        val counts = grades.map { g -> students.count { it.hasScores && it.grade == g } }
+        val maxCount = (counts.maxOrNull() ?: 1).coerceAtLeast(1)
+
+        return RoundedPanel().apply {
+            layout = BorderLayout(0, 15)
+            border = EmptyBorder(20, 20, 20, 20)
+
+            add(JLabel("Grade Distribution").apply {
+                font = Font("SansSerif", Font.BOLD, 18)
+                foreground = AppColors.textPrimary
+            }, BorderLayout.NORTH)
+
+            val barsPanel = JPanel(GridLayout(1, 5, 20, 0)).apply { isOpaque = false }
+            for ((i, grade) in grades.withIndex()) {
+                val barPanel = JPanel(BorderLayout(0, 8)).apply { isOpaque = false }
+                val barHeight = if (maxCount > 0) (counts[i] * 150) / maxCount else 0
+
+                val bar = object : JPanel() {
+                    override fun paintComponent(g: Graphics) {
+                        val g2 = g.create() as Graphics2D
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                        g2.color = getGradeColor(grade)
+                        val h = (height * barHeight) / 150
+                        g2.fillRoundRect((width - 40) / 2, height - h, 40, h, 8, 8)
+                        g2.dispose()
+                    }
+                }.apply {
+                    isOpaque = false
+                    preferredSize = Dimension(60, 150)
+                }
+
+                val label = JLabel(grade, SwingConstants.CENTER).apply {
+                    font = Font("SansSerif", Font.BOLD, 16)
+                    foreground = getGradeColor(grade)
+                }
+                val countLabel = JLabel("${counts[i]}", SwingConstants.CENTER).apply {
+                    font = Font("SansSerif", Font.PLAIN, 12)
+
 // ==================== MAIN APPLICATION ====================
 class GradeCalculatorApp : JFrame("Grade Calculator") {
     private val students = mutableListOf(
@@ -238,10 +349,20 @@ class GradeCalculatorApp : JFrame("Grade Calculator") {
 
         val sidebar = Sidebar { page -> navigateTo(page) }
         add(sidebar, BorderLayout.WEST)
+
+        refreshPanels()
         add(contentPanel, BorderLayout.CENTER)
+
+        navigateTo("dashboard")
+    }
+
+    private fun refreshPanels() {
+        contentPanel.removeAll()
+        contentPanel.add(DashboardPanel(students), "dashboard")
     }
 
     private fun navigateTo(page: String) {
+        refreshPanels()
         (contentPanel.layout as CardLayout).show(contentPanel, page)
     }
 }
