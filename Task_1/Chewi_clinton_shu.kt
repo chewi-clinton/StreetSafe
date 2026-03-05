@@ -235,7 +235,9 @@ fun main() {
         println("\n=== Student Grade Calculator ===")
         println("1. View all grades")
         println("2. Add a new student")
-        println("3. Exit")
+        println("3. Upload and process Excel file")
+        println("4. Create sample Excel file")
+        println("5. Exit")
         print("Choose an option: ")
 
         when (readLine()?.trim()) {
@@ -249,6 +251,19 @@ fun main() {
                 println("${student.name} added successfully!")
             }
             "3" -> {
+                println("Enter the full path to the Excel file (.xlsx)")
+                print("Path: ")
+                val path = readLine()?.trim() ?: ""
+                if (path.isNotEmpty()) {
+                    processExcelFile(path)
+                } else {
+                    println("No file path provided.")
+                }
+            }
+            "4" -> {
+                createSampleExcel()
+            }
+            "5" -> {
                 println("Goodbye!")
                 return
             }
