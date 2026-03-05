@@ -427,6 +427,103 @@ class StudentListPanel(private val students: List<Student>) : JPanel() {
         val scrollPane = JScrollPane(table).apply {
             border = BorderFactory.createEmptyBorder()
             background = AppColors.cardBg
+            viewport.background = AppColors.cardBg
+        }
+
+        val tableWrapper = RoundedPanel().apply {
+            layout = BorderLayout()
+            border = EmptyBorder(5, 5, 5, 5)
+            add(scrollPane)
+        }
+
+        add(tableWrapper, BorderLayout.CENTER)
+    }
+}
+
+// ==================== ADD STUDENT PANEL ====================
+class AddStudentPanel(private val onAdd: (Student) -> Unit) : JPanel() {
+    init {
+        background = AppColors.background
+        layout = BorderLayout(0, 20)
+        border = EmptyBorder(30, 30, 30, 30)
+
+        add(JLabel("Add New Student").apply {
+            font = Font("SansSerif", Font.BOLD, 28)
+            foreground = AppColors.textPrimary
+        }, BorderLayout.NORTH)
+
+        val formCard = RoundedPanel().apply {
+            layout = GridBagLayout()
+            border = EmptyBorder(30, 40, 30, 40)
+        }
+
+        val gbc = GridBagConstraints().apply {
+            fill = GridBagConstraints.HORIZONTAL
+            insets = Insets(8, 5, 8, 5)
+        }
+
+        val nameField = StyledTextField(25)
+        val scoresField = StyledTextField(25)
+        val statusLabel = JLabel(" ").apply {
+            font = Font("SansSerif", Font.PLAIN, 14)
+            foreground = AppColors.success
+        }
+
+        // Name label
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0
+        formCard.add(JLabel("Student Name").apply {
+            font = Font("SansSerif", Font.BOLD, 14)
+            foreground = AppColors.textSecondary
+        }, gbc)
+
+        // Name field
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 1.0
+        formCard.add(nameField, gbc)
+
+        // Scores label
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0
+        formCard.add(JLabel("Scores (comma-separated, e.g. 85,92,78)").apply {
+            font = Font("SansSerif", Font.BOLD, 14)
+            foreground = AppColors.textSecondary
+        }, gbc)
+
+        // Scores field
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 1.0
+        formCard.add(scoresField, gbc)
+
+        // Button
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0.0
+        gbc.insets = Insets(20, 5, 8, 5)
+        val addBtn = PurpleButton("Add Student").apply {
+            preferredSize = Dimension(200, 45)
+        }
+        formCard.add(addBtn, gbc)
+
+        // Status
+        gbc.gridx = 0; gbc.gridy = 5
+        gbc.insets = Insets(8, 5, 8, 5)
+        formCard.add(statusLabel, gbc)
+
+        addBtn.addActionListener {
+            val name = nameField.text.trim()
+            if (name.isEmpty()) {
+                statusLabel.foreground = AppColors.danger
+                statusLabel.text = "Please enter a student name."
+                return@addActionListener
+            }
+
+            val scoresText = scoresField.text.trim()
+            val scores = if (scoresText.isEmpty()) null
+            else scoresText.split(",").mapNotNull { it.trim().toIntOrNull() }
+
+            if (scoresText.isNotEmpty() && (scores == null || scores.isEmpty())) {
+                statusLabel.foreground = AppColors.danger
+                statusLabel.text = "Invalid scores format. Use numbers separated by commas."
+                return@addActionListener
+            }
+
+            onAdd(Student(name, scores))
+            nameField.text = ""
 
 // ==================== MAIN APPLICATION ====================
 class GradeCalculatorApp : JFrame("Grade Calculator") {
@@ -463,6 +560,10 @@ class GradeCalculatorApp : JFrame("Grade Calculator") {
         contentPanel.removeAll()
         contentPanel.add(DashboardPanel(students), "dashboard")
         contentPanel.add(StudentListPanel(students), "students")
+        contentPanel.add(AddStudentPanel { student ->
+            students.add(student)
+            refreshPanels()
+        }, "add")
     }
 
     private fun navigateTo(page: String) {
