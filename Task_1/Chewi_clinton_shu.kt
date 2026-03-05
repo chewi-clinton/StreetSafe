@@ -55,12 +55,21 @@ fun inputStudent(): Student {
 // Process an Excel file: read students, calculate grades, write back
 fun processExcelFile(inputPath: String): String {
     val file = File(inputPath)
-    if (!file.exists()) {
-        println("Error: File '$inputPath' not found.")
+    if (!file.exists() || !file.isFile) {
+        println("Error: '$inputPath' is not a valid file.")
+        return ""
+    }
+    if (!file.name.endsWith(".xlsx", ignoreCase = true)) {
+        println("Error: File must be a .xlsx Excel file.")
         return ""
     }
 
-    val workbook = XSSFWorkbook(FileInputStream(file))
+    val workbook = try {
+        XSSFWorkbook(FileInputStream(file))
+    } catch (e: Exception) {
+        println("Error: Could not read Excel file - ${e.message}")
+        return ""
+    }
     val sheet = workbook.getSheetAt(0)
 
     // Determine the structure: find Name and Marks columns
