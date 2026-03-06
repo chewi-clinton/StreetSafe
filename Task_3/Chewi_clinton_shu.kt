@@ -1,11 +1,11 @@
 // ==========================================
 // Task 3: Object-Oriented Grade Calculator
-// Demonstrates: Classes, Constructors, Inheritance,
+// Covers: Classes, Constructors, Inheritance,
 // Abstract Classes, Data Classes, Interfaces,
 // Sealed Classes, Companion Objects, Visibility Modifiers
 // ==========================================
 
-// --- Data Class: holds assessment info ---
+// --- Data Class: stores details about a single assessment ---
 data class Assessment(
     val subject: String,
     val score: Int,
@@ -15,7 +15,7 @@ data class Assessment(
         get() = (score.toDouble() / maxScore) * 100
 }
 
-// --- Abstract Class: base for all people in the system ---
+// --- Abstract Class: foundation for all individuals in the system ---
 abstract class Person(val name: String, protected var age: Int) {
 
     init {
@@ -32,7 +32,7 @@ abstract class Person(val name: String, protected var age: Int) {
     override fun toString(): String = "$name (${role()}, age $age)"
 }
 
-// --- Open class: Student extends Person ---
+// --- Open class: Student is a type of Person ---
 open class Student(
     name: String,
     age: Int,
@@ -79,7 +79,7 @@ open class Student(
         "$name (Student #$studentId, avg: ${"%.1f".format(calculateAverage())}%)"
 }
 
-// --- GraduateStudent inherits from Student (multi-level inheritance) ---
+// --- GraduateStudent builds on Student (multi-level inheritance) ---
 class GraduateStudent(
     name: String,
     age: Int,
@@ -97,7 +97,7 @@ class GraduateStudent(
     }
 }
 
-// --- Teacher extends Person ---
+// --- Teacher is also a type of Person ---
 class Teacher(
     name: String,
     age: Int,
@@ -126,20 +126,20 @@ class Teacher(
     override fun toString(): String = "$name (Teacher, $department)"
 }
 
-// --- Interface: Gradable - defines grading behavior ---
+// --- Interface: Gradable - outlines grading contract ---
 interface Gradable {
     fun calculateAverage(): Double
     fun getGrade(): String
     fun isPassing(): Boolean = calculateAverage() >= 60.0
 }
 
-// --- Interface: Exportable - defines export behavior ---
+// --- Interface: Exportable - outlines export contract ---
 interface Exportable {
     fun toCSV(): String
     fun toSummaryString(): String
 }
 
-// --- Class implementing multiple interfaces ---
+// --- Class that satisfies multiple interfaces ---
 class CourseResult(
     val studentName: String,
     val courseName: String,
@@ -171,7 +171,7 @@ class CourseResult(
     override fun toString(): String = toSummaryString()
 }
 
-// --- Sealed Class: represents grade evaluation result ---
+// --- Sealed Class: captures all possible grading outcomes ---
 sealed class GradeResult {
     data class Passed(val studentName: String, val grade: String, val average: Double) : GradeResult()
     data class Failed(val studentName: String, val average: Double, val deficit: Double) : GradeResult()
@@ -179,7 +179,7 @@ sealed class GradeResult {
     object NoData : GradeResult()
 }
 
-// Exhaustive when handling for sealed class
+// Handles each possible sealed class outcome exhaustively
 fun handleGradeResult(result: GradeResult): String = when (result) {
     is GradeResult.Passed -> "${result.studentName} passed with ${result.grade} (${"%.1f".format(result.average)}%)"
     is GradeResult.Failed -> "${result.studentName} failed (${"%.1f".format(result.average)}%) - needs ${"%.1f".format(result.deficit)} more points"
@@ -187,7 +187,7 @@ fun handleGradeResult(result: GradeResult): String = when (result) {
     GradeResult.NoData -> "No grade data available"
 }
 
-// Evaluate a student and return a sealed class result
+// Assesses a student and wraps the outcome in a sealed class
 fun evaluateStudent(student: Student): GradeResult {
     if (student.getAssessments().isEmpty()) {
         return GradeResult.Incomplete(student.name, "No assessments submitted")
@@ -243,10 +243,10 @@ class GradeCalculator private constructor() {
 }
 
 // ==========================================
-// Main: demonstrates all OOP features
+// Main: walks through all OOP features
 // ==========================================
 fun main() {
-    // --- 1. Creating instances using constructors ---
+    // --- 1. Instantiating objects via constructors ---
     println("=== Creating People ===")
 
     val student1 = Student("Alice", 20, "STU001")
@@ -263,7 +263,7 @@ fun main() {
     teacher.addCourse("SE 3242: Android Development")
     teacher.addCourse("CS 101: Intro to Programming")
 
-    // --- 2. Adding assessments to students ---
+    // --- 2. Assigning assessments to students ---
     println("\n=== Adding Assessments ===")
 
     student1.addAssessment(Assessment("Math", 92))
@@ -281,7 +281,7 @@ fun main() {
     println("Assessments added for ${student1.name}, ${student2.name}, and ${gradStudent.name}")
     println("${student3.name} has no assessments (will test Incomplete case)")
 
-    // --- 3. Polymorphism: store different subclasses in one collection ---
+    // --- 3. Polymorphism: different subclasses grouped in one list ---
     println("\n=== Polymorphism: Displaying All People ===")
 
     val people: List<Person> = listOf(student1, student2, student3, gradStudent, teacher)
@@ -291,7 +291,7 @@ fun main() {
         person.displayInfo()
     }
 
-    // --- 4. Using data class features (toString, copy, destructuring) ---
+    // --- 4. Showcasing data class capabilities (toString, copy, destructuring) ---
     println("\n=== Data Class Features ===")
 
     val assessment = Assessment("Physics", 85, 100)
@@ -303,7 +303,7 @@ fun main() {
     val (subject, score, maxScore) = assessment
     println("Destructuring: subject=$subject, score=$score, maxScore=$maxScore")
 
-    // --- 5. Sealed class: evaluating students ---
+    // --- 5. Sealed class: determining student outcomes ---
     println("\n=== Sealed Class: Grade Evaluation ===")
 
     val students = listOf(student1, student2, student3, gradStudent)
@@ -316,7 +316,7 @@ fun main() {
     // Test NoData case
     println(handleGradeResult(GradeResult.NoData))
 
-    // --- 6. Interfaces: CourseResult with multiple interfaces ---
+    // --- 6. Interfaces: CourseResult satisfying multiple interfaces ---
     println("\n=== Interfaces: CourseResult ===")
 
     val courseResults = listOf(
@@ -337,7 +337,7 @@ fun main() {
         println("  ${it.studentName}: ${if (it.isPassing()) "Passing" else "Not Passing"}")
     }
 
-    // --- 7. Companion object usage ---
+    // --- 7. Using the companion object ---
     println("\n=== Companion Object: GradeCalculator ===")
 
     println("Grade from score 85: ${GradeCalculator.fromScore(85)}")
@@ -351,10 +351,10 @@ fun main() {
         println("  ${s.name}: ${"%.1f".format(avg)}% - ${if (GradeCalculator.isHonorRoll(avg)) "Honor Roll" else "Regular"}")
     }
 
-    // --- 8. Companion object report ---
+    // --- 8. Generating a report via companion object ---
     println("\n${GradeCalculator.createReport(people)}")
 
-    // --- 9. Polymorphism with overridden toString ---
+    // --- 9. Polymorphism through overridden toString ---
     println("=== Polymorphism: toString() ===")
     people.forEach { println(it) }
 }
