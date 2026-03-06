@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Grade Calculator</string>
+
+    <!-- Dashboard -->
+    <string name="greeting">Hi, Student!</string>
+    <string name="greeting_subtitle">What are we calculating today?</string>
+    <string name="upload_excel">Upload Excel</string>
+    <string name="upload_excel_desc">Import student data from a spreadsheet</string>
+    <string name="manual_entry">Manual Entry</string>
+    <string name="manual_entry_desc">Enter scores one by one</string>
+
+    <!-- Manual Entry -->
+    <string name="enter_scores">Enter Scores</string>
+    <string name="student_name">Student Name</string>
+    <string name="student_name_hint">e.g. John Doe</string>
+    <string name="subject_name">Subject Name</string>
+    <string name="subject_name_hint">e.g. Mathematics</string>
+    <string name="score">Score</string>
+    <string name="score_hint">e.g. 85</string>
+    <string name="add_subject">+ Add Another Score</string>
+    <string name="calculate_results">Calculate Results</string>
+
+    <!-- Results -->
+    <string name="results_title">Results</string>
+    <string name="download_report">Download Report</string>
+    <string name="grade_label">Grade</string>
+    <string name="average_label">Average</string>
+
+    <!-- Excel Upload -->
+    <string name="upload_data">Upload Data</string>
+    <string name="tap_to_browse">Tap to browse or select Excel file</string>
+    <string name="calculate_grades">Calculate Grades</string>
+    <string name="supported_formats">Supported: .xlsx files</string>
+    <string name="generate_sample">Generate Sample Excel</string>
+
+    <!-- General -->
+    <string name="back">Back</string>
+    <string name="error_empty_name">Please enter a student name</string>
+    <string name="error_no_subjects">Please add at least one score</string>
+    <string name="error_invalid_score">Score must be between 0 and 100</string>
+</resources>

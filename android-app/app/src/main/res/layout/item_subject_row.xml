@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="1dp"
+    app:cardBackgroundColor="@color/card_surface">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="14dp"
+        android:gravity="center_vertical">
+
+        <!-- Score Label -->
+        <TextView
+            android:id="@+id/tvScoreLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Score"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginEnd="12dp" />
+
+        <!-- Score Input -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            style="@style/AppTextInput"
+            android:hint="@string/score">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etScore"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/score_hint"
+                android:textSize="14sp"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Delete Button -->
+        <TextView
+            android:id="@+id/btnDelete"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:text="X"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:fontFamily="sans-serif-bold"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

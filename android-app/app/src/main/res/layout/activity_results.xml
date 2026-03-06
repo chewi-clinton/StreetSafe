@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/app_background">
+
+    <!-- Purple Top Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/primary_purple"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp">
+
+        <TextView
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="\u2190"
+            android:textSize="22sp"
+            android:textColor="@color/white"
+            android:paddingEnd="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/results_title"
+            android:textSize="20sp"
+            android:textColor="@color/white"
+            android:fontFamily="sans-serif-medium" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <!-- Grade Hero Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/card_surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="32dp">
+
+                    <TextView
+                        android:id="@+id/tvStudentName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="18sp"
+                        android:textColor="@color/text_secondary"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:id="@+id/tvGrade"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="72sp"
+                        android:textColor="@color/primary_purple"
+                        android:fontFamily="sans-serif-bold"
+                        android:layout_marginTop="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvAverage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="20sp"
+                        android:textColor="@color/text_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:layout_marginTop="4dp" />
+
+                    <!-- Pass/Fail Badge -->
+                    <TextView
+                        android:id="@+id/tvPassFail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="6dp"
+                        android:textSize="13sp"
+                        android:textColor="@color/white"
+                        android:fontFamily="sans-serif-medium"
+                        android:layout_marginTop="12dp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Subject Breakdown Label -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Score Breakdown"
+                android:textSize="18sp"
+                android:textColor="@color/text_primary"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Subject Cards Container -->
+            <LinearLayout
+                android:id="@+id/subjectsBreakdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Sticky Bottom Button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:background="@color/card_surface"
+        android:elevation="8dp">
+
+        <Button
+            android:id="@+id/btnDownload"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            style="@style/PrimaryButton"
+            android:text="@string/download_report" />
+    </LinearLayout>
+</LinearLayout>

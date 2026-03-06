@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.GradeCalculator" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/primary_purple</item>
+        <item name="colorPrimaryVariant">@color/primary_purple</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@color/primary_purple</item>
+        <item name="android:navigationBarColor">@color/white</item>
+    </style>
+
+    <!-- Purple Toolbar -->
+    <style name="PurpleToolbar">
+        <item name="android:background">@color/primary_purple</item>
+        <item name="android:elevation">0dp</item>
+    </style>
+
+    <!-- Card Style -->
+    <style name="AppCard">
+        <item name="cardCornerRadius">16dp</item>
+        <item name="cardElevation">4dp</item>
+        <item name="cardBackgroundColor">@color/card_surface</item>
+    </style>
+
+    <!-- Primary Button -->
+    <style name="PrimaryButton" parent="Widget.MaterialComponents.Button">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="backgroundTint">@color/primary_purple</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+    </style>
+
+    <!-- Secondary Button -->
+    <style name="SecondaryButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:textColor">@color/primary_purple</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="strokeColor">@color/light_purple_muted</item>
+        <item name="android:backgroundTint">@color/light_purple_muted</item>
+        <item name="cornerRadius">24dp</item>
+    </style>
+
+    <!-- Input Field -->
+    <style name="AppTextInput" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">12dp</item>
+        <item name="boxCornerRadiusTopEnd">12dp</item>
+        <item name="boxCornerRadiusBottomStart">12dp</item>
+        <item name="boxCornerRadiusBottomEnd">12dp</item>
+        <item name="boxStrokeColor">@color/primary_purple</item>
+        <item name="hintTextColor">@color/primary_purple</item>
+    </style>
+
+    <!-- Header Text -->
+    <style name="HeaderText">
+        <item name="android:textSize">26sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:fontFamily">sans-serif-bold</item>
+    </style>
+
+    <!-- Subtitle Text -->
+    <style name="SubtitleText">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+</resources>

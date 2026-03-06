@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Colors -->
+    <color name="primary_purple">#6A4DF6</color>
+    <color name="light_purple_muted">#EBE7FF</color>
+
+    <!-- Background & Surfaces -->
+    <color name="app_background">#F5F6FA</color>
+    <color name="card_surface">#FFFFFF</color>
+
+    <!-- Typography -->
+    <color name="text_primary">#2D3142</color>
+    <color name="text_secondary">#9094A6</color>
+
+    <!-- Accent Colors -->
+    <color name="success_green">#4CAF50</color>
+    <color name="warning_yellow">#FFB300</color>
+    <color name="error_red">#F44336</color>
+
+    <!-- Grade Colors -->
+    <color name="grade_a">#4CAF50</color>
+    <color name="grade_b">#2196F3</color>
+    <color name="grade_c">#FFB300</color>
+    <color name="grade_d">#FF9800</color>
+    <color name="grade_f">#F44336</color>
+
+    <!-- System -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="shadow_purple">#146A4DF6</color>
+</resources>
