@@ -1,195 +1,394 @@
-# Grade Calculator - Kotlin Branch
+# 🛡️ StreetSafe
 
-A comprehensive Grade Calculator project built in Kotlin, demonstrating progressive mastery of the language across multiple tasks: from basic functions, to lambdas and collections, to full object-oriented programming, and finally a modern Android mobile application.
+**Sensor-driven personal safety app for Android — offline-first, built for Yaoundé, Cameroon**
 
----
+[![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![Language](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org)
+[![Min SDK](https://img.shields.io/badge/Min%20SDK-24%20(Android%207.0)-orange.svg)]()
+[![Architecture](https://img.shields.io/badge/Architecture-MVVM%20+%20Clean-purple.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Project Structure
-
-```
-GradeCalculator/
-├── Task_1/                  # Core grade calculator (functions, data class, Excel I/O)
-├── Task_2/                  # Lambdas, higher-order functions, collection operations
-├── Task_3/                  # OOP: inheritance, interfaces, sealed classes, companion objects
-├── test/                    # Unit test suite for grade logic and collection operations
-├── GUI/                     # Desktop GUI application (Java Swing + FlatLaf dark theme)
-├── android-app/             # Android mobile application (Material Design, Kotlin)
-└── README.md
-```
+> Your phone becomes a silent bodyguard — detecting falls, crashes, and distress situations through hardware sensors, then automatically alerting your emergency contacts via SMS with your GPS location. No internet required.
 
 ---
 
-## Task 1 - Core Grade Calculator
+## Table of Contents
 
-**File:** `Task_1/Chewi_clinton_shu.kt`
+- [Problem Statement](#-problem-statement)
+- [Solution Overview](#-solution-overview)
+- [Key Features](#-key-features)
+- [How It Works](#-how-it-works)
+- [Sensor Integration](#-sensor-integration)
+- [System Architecture](#-system-architecture)
+- [Technical Stack](#-technical-stack)
+- [Detection Algorithms](#-detection-algorithms)
+- [Database Design](#-database-design)
+- [User Interface](#-user-interface)
+- [Localization](#-localization)
+- [Hardware Compatibility](#-hardware-compatibility)
+- [Permissions](#-permissions)
+- [Getting Started](#-getting-started)
+- [Development Roadmap](#-development-roadmap)
+- [Testing Strategy](#-testing-strategy)
+- [References](#-references)
+- [License](#-license)
 
-A terminal-based student grade calculator with Excel import/export support.
+---
 
-**Key Features:**
-- `Student` data class with nullable scores
-- Grade calculation using `when` expressions (A/B/C/D/F scale)
-- Interactive menu with 5 options: view grades, add student, upload Excel, create sample, exit
-- Excel processing with Apache POI: auto-detects name/score columns, writes averages and grades back
-- Input parsing with `mapNotNull` and `toIntOrNull` for safe conversion
+## 🚨 Problem Statement
 
-**Run:**
+Personal safety is a daily concern in **Yaoundé, Cameroon** — a city of over 2.5 million people. Cameroon ranks among the top 15 countries globally on the Numbeo Crime Index (65.7 in 2026), and Yaoundé itself scores a moderate-to-high crime index of 53.6. The UK Foreign Office and U.S. State Department both flag armed robbery, mugging, and violent assault as persistent risks in the capital, particularly in neighborhoods like Briqueterie, Mokolo market, and poorly lit residential areas.
+
+The core problem is not just crime — it is the **inability to call for help when it matters most:**
+
+| Challenge | Context in Yaoundé |
+|-----------|-------------------|
+| **Victims are incapacitated** | After a motorcycle-taxi ("moto-taxi") accident, the victim may be unconscious or immobilized on the roadside |
+| **Active panic buttons are dangerous** | During a mugging or assault, pulling out a phone to press a button can escalate the situation |
+| **Emergency response is unreliable** | The U.S. State Department notes that local police "lack the resources to respond effectively to serious criminal incidents." The national emergency number (117) has inconsistent response times |
+| **Internet is not guaranteed** | Mobile data is expensive and coverage is unreliable in many neighborhoods, especially at night when incidents are most likely |
+
+Every existing personal safety app shares the same fundamental flaw: they require the user to **actively interact with their phone** at the exact moment when that action is impossible or dangerous. StreetSafe eliminates this dependency entirely.
+
+---
+
+## 💡 Solution Overview
+
+**StreetSafe** reimagines personal safety by turning the smartphone into a **passive detection device**. Instead of waiting for the user to press a button, the app continuously monitors built-in hardware sensors in the background and automatically detects emergency situations — falls, vehicle collisions, phone snatching, and distress events.
+
+When an incident is detected, the app initiates a **15-second countdown with strong vibration**. If the user does not cancel (confirming they need help), StreetSafe automatically sends an **SMS alert** containing their name, the incident type, a timestamp, and a **clickable GPS location link** to up to 5 pre-configured emergency contacts.
+
+The entire pipeline — from detection to alert — operates **completely offline** with no internet connection, no cloud backend, and no user account required. For situations where the user is conscious but unable to openly use their phone (e.g., being followed or threatened), a **customizable shake-to-alert gesture** silently triggers the emergency alert without ever touching the screen.
+
+---
+
+## ✨ Key Features
+
+### Passive Detection — No User Action Required
+
+- **Fall Detection** — Accelerometer-based three-phase algorithm (free-fall → impact → post-impact stillness) achieves 88–98% accuracy based on validated published research
+- **Vehicle Collision Detection** — Recognizes extremely high g-force spikes (>4g) followed by sustained stillness, distinguishable from ordinary phone drops by magnitude and duration
+- **Phone Separation Detection** — Proximity sensor identifies when the phone is forcefully removed from the user's body, corroborated by a simultaneous accelerometer spike
+
+### Active Safety Tools
+
+- **Shake-to-Alert** — Three rapid shakes within 2 seconds send a silent distress signal without touching the screen — configurable in settings
+- **Manual Panic Button** — One-tap emergency alert for situations where active use is possible
+- **Walk Mode** — GPS-based route monitoring that triggers a check-in prompt if the user stops moving unexpectedly
+
+### Alert System
+
+- **SMS-Based Alerts** — Emergency contacts receive the user's name, event type, timestamp, and GPS coordinates formatted as a clickable Google Maps link — no internet required
+- **Countdown Cancel** — 15-second vibration countdown before dispatching alerts, allowing the user to cancel false positives by tapping or shaking
+- **Multi-Contact Support** — Simultaneous delivery to up to 5 emergency contacts
+
+### Offline-First Design
+
+- All sensor processing and incident detection happens entirely on-device
+- No cloud backend, no user accounts, no data collection
+- All incident history stored locally using Room database
+- The only external communication is the SMS alert sent to the user's own chosen contacts
+
+---
+
+## ⚙️ How It Works
+
+```
+  Continuous Sensor Monitoring (Background Service)
+  Accelerometer · Proximity · GPS · Microphone (optional)
+                        │
+                        ▼
+               Incident Detection Pipeline
+               Thresholds calibrated from 15+ validated studies
+                        │
+                        ▼
+               Sensor Fusion Engine
+               Cross-references multiple sensors to reduce false positives
+                        │
+                 Incident Detected
+                        │
+                        ▼
+               15-Second Countdown
+               Strong vibration · User can cancel by tapping or shaking
+                        │
+                 No response received
+                        │
+                        ▼
+               SMS Alert Dispatched
+               Name + Event Type + Timestamp + GPS Map Link
+               Sent to all configured emergency contacts
+                        │
+                        ▼
+               Incident Logged Locally
+               Stored in Room database for history review
+```
+
+**Example SMS alert:**
+
+> 🚨 **\[StreetSafe\] EMERGENCY ALERT** \
+> From: Jean-Pierre \
+> Type: Fall Detected \
+> Time: 28/02/2026 21:34 \
+> Location: https://maps.google.com/?q=3.8480,11.5021 \
+> No response received after fall detection. Please check on them.
+
+---
+
+## 📡 Sensor Integration
+
+StreetSafe uses four hardware sensors as the **primary mechanism** through which the app operates — not as peripheral add-ons.
+
+| Sensor | Role in StreetSafe | Required? |
+|--------|-------------------|-----------|
+| **Accelerometer** (50Hz) | Fall detection, collision detection, shake-to-alert gesture recognition | ✅ Required |
+| **Proximity** | Detects when the phone is forcefully separated from the user's body (pocket → snatched) | ✅ Required |
+| **GPS** | Embeds location coordinates in SMS alerts; powers Walk Mode route monitoring | ✅ Required |
+| **Microphone** | Detects sustained loud sounds (>90 dB) as a supplementary distress indicator | ⚡ Optional |
+
+### How Each Sensor Contributes
+
+**Accelerometer** is the primary detection engine. It monitors acceleration magnitude against calibrated thresholds. A fall produces a distinctive three-phase signature: brief free-fall, a sharp impact spike, then near-zero movement. Vehicle collisions produce even larger spikes (>4g). The shake-to-alert feature uses jerk calculation (rate of acceleration change) to distinguish deliberate gestures from ordinary movement.
+
+**Proximity Sensor** returns a binary near/far reading. When the phone transitions from NEAR (in pocket, against body) to FAR simultaneously with an accelerometer spike, it strongly indicates theft or assault. The proximity sensor also helps calibrate fall detection — a fall while the phone is in a pocket is more significant than a phone dropped from a table.
+
+**GPS** uses Google Play Services' FusedLocationProvider in balanced-power mode (30-second intervals). On alert dispatch, the most recent GPS fix is formatted as a Google Maps URL embedded in the SMS. In Walk Mode, GPS tracks the user's route and triggers a check-in if movement ceases for a configurable duration (default: 3 minutes).
+
+**Microphone**, when enabled, computes RMS amplitude and converts it to an approximate decibel reading. A sustained loud sound (>90 dB for more than 2 seconds) raises alert priority when corroborated by other sensor signals. **Audio is never recorded or stored** — only the amplitude value is used.
+
+### Graceful Degradation
+
+The app checks sensor availability at runtime and adapts. If the gyroscope is absent (common on budget Tecno/Infinix phones), fall detection operates in accelerometer-only mode with slightly reduced accuracy. If microphone permission is denied, audio monitoring is disabled. The app always informs the user which features are active on their specific device.
+
+---
+
+## 🏗️ System Architecture
+
+StreetSafe follows the **MVVM + Clean Architecture** pattern organized into four layers:
+
+| Layer | Responsibility | Key Components |
+|-------|---------------|----------------|
+| **Presentation** | UI rendering, user interaction | Jetpack Compose screens, ViewModels, Navigation |
+| **Domain** | Business logic and use cases | `DetectFallUseCase`, `SendEmergencyAlertUseCase`, `MonitorRouteUseCase` |
+| **Data** | Persistence and sensor abstraction | Room database (DAOs, entities), Repository implementations |
+| **Sensor Engine** | Continuous hardware monitoring | Android Foreground Service, sensor processors, SensorFusionEngine |
+
+The **Sensor Engine** runs as an Android Foreground Service (mandatory for continuous sensor access on Android 9+), displaying a persistent notification. Sensor data flows through individual processors into the **SensorFusionEngine**, which cross-references signals from multiple sensors before classifying an event as an incident.
+
+### Sensor Fusion Decision Matrix
+
+| Accelerometer | Proximity | Microphone | Classification | Confidence |
+|--------------|-----------|------------|----------------|------------|
+| High-g spike → stillness | — | — | Fall | Medium |
+| High-g spike → stillness | NEAR → FAR | — | Fall + phone dropped | High |
+| Very high-g (>4g) → stillness | Any | Loud sound | Vehicle collision | High |
+| — | NEAR → FAR | High amplitude | Phone snatched | Medium |
+| Shake pattern (≥3 in 2s) | NEAR | — | Silent alert gesture | High |
+
+This multi-sensor validation is the primary mechanism for reducing false positives — a single sensor signal alone rarely triggers an alert; corroboration from a second sensor elevates the confidence and triggers the countdown.
+
+---
+
+## 🔧 Technical Stack
+
+| Component | Technology | Justification |
+|-----------|------------|---------------|
+| Language | **Kotlin** | Official Android language; null safety, coroutines for async sensor processing |
+| UI Framework | **Jetpack Compose** | Modern declarative UI, significantly less boilerplate than XML |
+| Architecture | **MVVM + Clean Architecture** | Separation of concerns; testable and maintainable codebase |
+| Local Database | **Room** | SQLite abstraction with compile-time query verification and Flow integration |
+| Background Service | **Foreground Service + Coroutines** | Required for continuous sensor access; coroutines for non-blocking processing |
+| Location | **FusedLocationProviderClient** | Battery-optimized location via Google Play Services |
+| Offline Maps | **OSMDroid** | Open-source; supports offline tile caching; no API key required |
+| Dependency Injection | **Hilt** | Android-recommended DI framework with lifecycle awareness |
+| SMS | **Android SmsManager** | Native SMS dispatch; works entirely without internet |
+| Audio | **AudioRecord** | Low-level PCM access for amplitude-only monitoring |
+| Preferences | **DataStore** | Modern, type-safe replacement for SharedPreferences |
+| Testing | **JUnit 5 + Mockk + Espresso** | Unit, integration, and UI test coverage |
+
+---
+
+## 🔬 Detection Algorithms
+
+### Fall Detection — Three-Phase Threshold Algorithm
+
+Based on methodology validated across 15+ published studies with reported sensitivities of 60–99% and specificities of 75–100%.
+
+| Phase | What Happens | Threshold | Duration |
+|-------|-------------|-----------|----------|
+| **1. Free-Fall** | Acceleration magnitude drops below normal gravity | < 3.0 m/s² | > 200 ms |
+| **2. Impact** | Sharp acceleration spike immediately following free-fall | > 20.0 m/s² (~2g) | Within 1s of Phase 1 |
+| **3. Post-Impact Stillness** | Acceleration stabilizes near gravity (person lying still) | ±1.5 m/s² of 9.8 | > 5 seconds |
+
+All three phases must occur in sequence for the event to be classified as a fall. If a gyroscope is available, an orientation check (vertical → horizontal) further increases confidence.
+
+### Vehicle Collision Detection
+
+Uses the same accelerometer pipeline with a higher impact threshold (**>40 m/s², approximately 4g**) and a shorter countdown window (10 seconds). If GPS data indicates speed was above 10 km/h before the event, collision confidence increases further.
+
+### Shake-to-Alert Gesture Recognition
+
+The algorithm computes **jerk** (rate of acceleration change) to identify deliberate rapid shaking. A shake event registers when jerk exceeds 30 m/s³. If **3 or more shakes** occur within a **2-second window**, the gesture is recognized and a silent alert is dispatched. Both the required shake count and the time window are configurable in settings.
+
+---
+
+## 🗄️ Database Design
+
+StreetSafe uses **Room** with three core tables, all stored locally on-device.
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| **incidents** | Records every detected event | `type` (Fall / Collision / Shake / Manual / Sound), `timestamp`, `latitude`, `longitude`, `accelerometerPeak`, `audioPeakDb`, `alertSent`, `cancelledByUser`, `confidenceScore`, `notes` |
+| **emergency_contacts** | Stores the user's safety network | `name`, `phoneNumber` (+237 format), `relationship`, `isActive` |
+| **monitoring_sessions** | Tracks protection uptime and reliability | `startTime`, `endTime`, `mode` (Passive / Walk / Commute), `incidentCount`, `falsePositiveCount` |
+
+The `monitoring_sessions` table enables the user to review their protection history and helps measure false positive rates during development and testing.
+
+---
+
+## 🎨 User Interface
+
+### Screens
+
+| Screen | Purpose |
+|--------|---------|
+| **Onboarding** | First-launch setup — grant permissions, add at least 1 emergency contact, run sensor availability check |
+| **Home Dashboard** | Real-time monitoring status, sensor health indicators (green/gray dots), quick-access Walk Mode and Panic Button, recent activity log |
+| **Incident History** | Chronological list of all detected events — sent alerts, cancelled false positives, manual triggers |
+| **Contacts** | Manage up to 5 emergency contacts with name, phone number, and relationship |
+| **Settings** | Detection sensitivity, shake gesture configuration, countdown duration, language preference |
+| **Countdown Overlay** | Full-screen overlay on incident detection — large countdown timer, event type label, oversized cancel button |
+
+### Design Principles
+
+- **High contrast and large touch targets** — The countdown cancel button is deliberately oversized for use under stress, with trembling hands, or in darkness
+- **Zero daily interaction** — After initial setup, the app works entirely in the background with no required user engagement
+- **Transparent sensor status** — The home screen always shows which sensors are active so the user knows their exact protection level
+- **Persistent notification** — A non-intrusive status bar notification confirms the background service is running
+
+---
+
+## 🌍 Localization
+
+StreetSafe supports **French** (primary) and **English**, reflecting Yaoundé's bilingual population. All user-facing strings, including SMS alert text, are fully localized.
+
+| Element | English | French |
+|---------|---------|--------|
+| Monitoring status | Monitoring: Active | Surveillance : Active |
+| Fall alert | Fall Detected | Chute Détectée |
+| Cancel button | I'm OK — Cancel | Je vais bien — Annuler |
+| SMS header | EMERGENCY ALERT | ALERTE D'URGENCE |
+| Walk mode prompt | Are you OK? Tap to confirm. | Ça va ? Appuyez pour confirmer. |
+
+The app follows the device's system language by default, with a manual override available in Settings.
+
+---
+
+## 📱 Hardware Compatibility
+
+StreetSafe is designed for the budget Android phones that dominate the Cameroonian market.
+
+| Device Family | Accel | Gyro | Proximity | GPS | Mic | StreetSafe Status |
+|--------------|:---:|:---:|:---:|:---:|:---:|-------------------|
+| **Tecno Spark series** | ✅ | ❌ | ✅ | ✅ | ✅ | All core features functional |
+| **Infinix Hot series** | ✅ | ❌ | ✅ | ✅ | ✅ | All core features functional |
+| **Samsung Galaxy A series** | ✅ | ✅ | ✅ | ✅ | ✅ | Full feature set with enhanced accuracy |
+| **Xiaomi Redmi series** | ✅ | ✅ | ✅ | ✅ | ✅ | Full feature set with enhanced accuracy |
+
+**Key design constraint:** Gyroscope is frequently absent on Tecno and Infinix devices, which hold approximately 40% of the African smartphone market through parent company Transsion. No core StreetSafe feature depends exclusively on the gyroscope — it only serves as an optional accuracy enhancer for fall direction detection.
+
+---
+
+## 🔐 Permissions
+
+| Permission | Rationale |
+|-----------|-----------|
+| `SEND_SMS` | Dispatch emergency alerts to contacts without internet |
+| `ACCESS_FINE_LOCATION` | Embed GPS coordinates in emergency SMS alerts |
+| `ACCESS_BACKGROUND_LOCATION` | Continue monitoring when the app is minimized |
+| `RECORD_AUDIO` | Detect loud distress sounds — optional, can be denied |
+| `FOREGROUND_SERVICE` | Run continuous sensor monitoring in the background |
+| `POST_NOTIFICATIONS` | Display persistent monitoring status notification |
+| `VIBRATE` | Alert countdown vibration pattern |
+| `RECEIVE_BOOT_COMPLETED` | Auto-restart monitoring after device reboot |
+
+**Privacy commitment:** All sensor data is processed on-device. No audio is recorded or stored. No data is sent to any server. The only external communication is the SMS alert sent to the user's own chosen emergency contacts.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Android Studio Hedgehog (2023.1.1) or later
+- JDK 17 and Android SDK 34
+- A **physical Android device** — hardware sensors do not function on emulators
+
+### Quick Start
+
 ```bash
-kotlinc Task_1/Chewi_clinton_shu.kt -include-runtime -d task1.jar -cp "GUI/lib/*"
-java -cp "task1.jar:GUI/lib/*" Chewi_clinton_shuKt
+git clone https://github.com/yourusername/streetsafe.git
+cd streetsafe
 ```
 
----
+Open in Android Studio → Sync Gradle → Connect a physical device → Run.
 
-## Task 2 - Lambdas and Collection Operations
-
-**File:** `Task_2/Chewi_clinton_shu.kt`
-
-Extends Task 1 by replacing loops with functional programming patterns.
-
-**Key Changes from Task 1:**
-- `getGrade` converted from a function to a **lambda variable** `(Double) -> String`
-- `evaluateStudent` is a **higher-order function** accepting a grading strategy parameter
-- `forEach` and `forEachIndexed` replace traditional `for` loops throughout
-- **filter**: `filterStudentsByGrade()`, `getValidStudents()`, `getAtRiskStudents()`
-- **map**: `getStudentAverages()` transforms students into `Pair<String, Double>` list
-- **fold**: `calculateClassTotal()` and `calculateClassAverage()` accumulate scores
-- **sortedBy / sortedByDescending**: `getStudentsSortedByAverage()` for ranking
-- **take**: `getTopStudents()` gets the top N performers
-- **groupBy**: `groupStudentsByGrade()` groups students by letter grade
-- **flatMap**: aggregates all individual scores across students in `generateSummaryReport()`
-- **any / all / count**: boolean checks like `allStudentsPassed()`, `anyStudentGotA()`
-- **distinct / joinToString**: unique grade listing in summary reports
-- **maxByOrNull / minByOrNull**: find highest and lowest performers
-
-**Run:**
-```bash
-kotlinc Task_2/Chewi_clinton_shu.kt -include-runtime -d task2.jar -cp "GUI/lib/*"
-java -cp "task2.jar:GUI/lib/*" Chewi_clinton_shuKt
-```
+On first launch, the app guides you through granting permissions, adding at least one emergency contact, and running a sensor availability check. Tap **"Start Monitoring"** to begin.
 
 ---
 
-## Task 3 - Object-Oriented Programming
+## 🗺️ Development Roadmap
 
-**File:** `Task_3/Chewi_clinton_shu.kt`
-
-Demonstrates all core OOP concepts covered in the course.
-
-**Key Changes from Task 2:**
-- **Abstract class** `Person` with `init` validation block, abstract `role()` method, and `open fun displayInfo()`
-- **Inheritance**: `Student` extends `Person`, `GraduateStudent` extends `Student` (multi-level)
-- **Teacher** class extends `Person` with department and course management
-- **Data class** `Assessment` with `copy()`, destructuring declarations, and custom getter for `percentage`
-- **Interfaces**: `Gradable` (with default method `isPassing()`) and `Exportable` (with `toCSV()`, `toSummaryString()`)
-- **Multiple interface implementation**: `CourseResult` implements both `Gradable` and `Exportable`
-- **Sealed class** `GradeResult` with `Passed`, `Failed`, `Incomplete`, and `NoData` subtypes
-- **Exhaustive `when`** handling for sealed class without `else` branch
-- **Companion object** `GradeCalculator` with `const` properties, factory method `fromScore()`, and `createReport()`
-- **Visibility modifiers**: `private` for internal state, `protected` for age in Person
-- **Polymorphism**: `List<Person>` storing Student, GraduateStudent, and Teacher instances
-
-**Run:**
-```bash
-kotlinc Task_3/Chewi_clinton_shu.kt -include-runtime -d task3.jar
-java -jar task3.jar
-```
+| Phase | Timeline | Deliverables |
+|-------|----------|-------------|
+| **Phase 1 — MVP** | Weeks 1–6 | Foreground service with accelerometer monitoring, fall detection algorithm, shake-to-alert, emergency contact management, SMS alert dispatch with GPS, countdown overlay, home dashboard, French/English localization |
+| **Phase 2 — Enhanced Detection** | Weeks 7–10 | Proximity sensor integration, multi-sensor fusion engine, vehicle collision detection, Walk Mode with GPS route monitoring, incident history screen, settings with threshold customization |
+| **Phase 3 — Stretch Goals** | Weeks 11–14 | Audio monitoring module, offline map visualization (OSMDroid), battery optimization profiles, auto-start on boot, CSV export of incident history |
 
 ---
 
-## Test Suite
+## 🧪 Testing Strategy
 
-**File:** `test/GradeCalculatorTest.kt`
+| Test Type | Scope | Tools |
+|-----------|-------|-------|
+| **Unit Tests** | Detection algorithms, sensor fusion logic, SMS formatting, countdown behavior | JUnit 5, Mockk |
+| **Integration Tests** | Room database operations, repository layer, use case pipelines | AndroidX Test, Room in-memory DB |
+| **UI Tests** | Screen navigation, countdown overlay interaction, contact management | Espresso, Compose Testing |
+| **Manual Device Tests** | Fall simulation on cushioned surfaces, shake gesture trials, false positive measurement during daily activities (walking, stairs, sitting), SMS delivery verification, 4-hour battery consumption tests | Physical device protocol |
 
-Lightweight test framework (no external dependencies) covering all core logic.
-
-**Test Suites:**
-- Grade calculation boundary tests (A=90, B=80, C=70, D=60, F<60)
-- Student model: average computation, null/empty score handling
-- Data class features: equals, hashCode, copy, destructuring, toString
-- Collection operations: filter, map, fold, groupBy, flatMap, sortedBy, take, any, all, count, distinct
-- Higher-order functions: lambda variables, strategy pattern, generic transforms
-- Edge cases: perfect scores, zero scores, boundary values, large lists
-
-**Run:**
-```bash
-kotlinc test/GradeCalculatorTest.kt -include-runtime -d tests.jar
-java -jar tests.jar
-```
+Sensor-based features require physical device testing — emulators cannot simulate accelerometer or proximity data. The manual test protocol includes controlled fall simulations, shake gesture trials at various intensities, and extended daily-carry sessions to measure and minimize the false positive rate.
 
 ---
 
-## Desktop GUI Application
+## 📚 References
 
-**Directory:** `GUI/`
+### Academic Research
 
-A full-featured desktop application built with Java Swing and FlatLaf dark theme.
+1. Casilari, E., et al. — *"Analysis of Android Device-Based Solutions for Fall Detection"* — Sensors, 2015 — [PMC4570297](https://pmc.ncbi.nlm.nih.gov/articles/PMC4570297/)
+2. Rescio, G., et al. — *"Fall detection using accelerometer-based smartphones: Where do we go from here?"* — Frontiers in Public Health, 2022
+3. Jantaraprim, P., et al. — *"Fall Detection Using Accelerometer, Gyroscope & Impact Force Calculation on Android Smartphones"* — CHIuXiD '18, ACM
+4. Shahzad, A. & Kim, K. — *"FallDroid: An Automated Smart Phone-Based Fall Detection System"* — IEEE Transactions on Industrial Informatics, 2019
 
-**Screens:**
-- **Dashboard**: stats cards (total students, class average, passing count, top grade) and grade distribution bar chart
-- **Student List**: styled table with color-coded grades
-- **Add Student**: form with validation and status feedback
-- **Excel Import/Export**: file chooser, auto-processing, sample generation
+### Technical Documentation
 
-**Run:**
-```bash
-cd GUI && chmod +x build_and_run.sh && ./build_and_run.sh
-```
+5. [Android Sensors Overview](https://developer.android.com/develop/sensors-and-location/sensors/sensors_overview)
+6. [Android Foreground Services](https://developer.android.com/develop/background-work/services/foreground-services)
+7. [FusedLocationProviderClient](https://developer.android.com/develop/sensors-and-location/location)
+8. [OSMDroid Wiki](https://github.com/osmdroid/osmdroid/wiki)
 
----
+### Safety & Context Data
 
-## Android Mobile Application
-
-**Directory:** `android-app/`
-
-A modern Android app following Material Design principles with a clean, card-based UI.
-
-**Design System:**
-- Primary Purple: `#6A4DF6` - buttons, top bars, active elements
-- Light Purple Muted: `#EBE7FF` - secondary buttons, icon backgrounds
-- App Background: `#F5F6FA` - soft off-white base
-- Card Surface: `#FFFFFF` - white cards with 16dp rounded corners
-- Grade colors: Green (A), Blue (B), Yellow (C), Orange (D), Red (F)
-
-**Screens:**
-
-| Screen | Description |
-|--------|-------------|
-| **Home/Dashboard** | Greeting, two large navigation cards (Upload Excel, Manual Entry), quick stats |
-| **Manual Entry** | Purple top bar, student name input, dynamic subject rows with add/delete, sticky calculate button |
-| **Results** | Hero card with large grade display, pass/fail badge, scrollable subject breakdown with grade badges |
-| **Excel Upload** | Dashed upload zone, file picker integration, processing results display |
-
-**Tech Stack:**
-- Kotlin with View Binding
-- Material Components for Android
-- CardView and ConstraintLayout
-- Apache POI for Excel processing
-- ActivityResultContracts for file picking
-
-**Build (Android Studio):**
-1. Open the `android-app/` folder in Android Studio
-2. Sync Gradle and let dependencies download
-3. Connect your Android device via USB (enable Developer Options and USB Debugging)
-4. Click Run or use `./gradlew installDebug`
+9. Numbeo Crime Index 2026 — Cameroon: 65.7, Yaoundé: 53.6
+10. UK GOV.UK — [Cameroon Safety and Security Advisory](https://www.gov.uk/foreign-travel-advice/cameroon/safety-and-security)
+11. U.S. State Department — [Cameroon Travel Advisory](https://travel.state.gov/content/travel/en/traveladvisories/traveladvisories/cameroon-travel-advisory.html)
 
 ---
 
-## Grade Scale
+## 📄 License
 
-All tasks use the same grading scale:
-
-| Score Range | Grade |
-|-------------|-------|
-| 90 - 100    | A     |
-| 80 - 89     | B     |
-| 70 - 79     | C     |
-| 60 - 69     | D     |
-| 0 - 59      | F     |
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## Author
-
-**Chewi Clinton Shu**
-SE 3242: Android Application Development
-ICT University, Cameroon
+<p align="center">
+  Built with ❤️ in Yaoundé, Cameroon 🇨🇲
+</p>
