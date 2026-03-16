@@ -326,7 +326,7 @@ StreetSafe is designed for the budget Android phones that dominate the Camerooni
 ### Quick Start
 
 ```bash
-git clone https://github.com/yourusername/streetsafe.git
+git clone https://github.com/chewi-clinton/streetsafe.git
 cd streetsafe
 ```
 
