@@ -1,53 +1,107 @@
 package com.example.safesense.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.safesense.ui.onboarding.OnboardingScreen
+import kotlinx.coroutines.flow.map
 
-// Each screen is a placeholder that just shows its name.
-// This lets you verify ALL navigation routes work before writing a single real screen.
-// Replace each placeholder one at a time in Block 3+.
+private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
 
 @Composable
 fun SafeSenseNavGraph(
-    navController: NavHostController = rememberNavController()
+    dataStore: DataStore<Preferences>,
+    navController: NavHostController = rememberNavController(),
+    modifier: Modifier = Modifier
 ) {
+    // Collect the onboarding status. We default to 'false' (showing onboarding) 
+    // while the DataStore is still loading to ensure the user sees the setup screen 
+    // immediately rather than a blank white page.
+    val onboardingComplete by dataStore.data
+        .map { prefs -> prefs[ONBOARDING_COMPLETE_KEY] ?: false }
+        .collectAsState(initial = false)
+
+    val startDestination = if (onboardingComplete) {
+        Screen.Home.route
+    } else {
+        Screen.Onboarding.route
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Screen.Onboarding.route
+        startDestination = startDestination,
+        modifier = modifier
     ) {
-        composable(Screen.Onboarding.route) {
-            Text(text = "Onboarding Screen")
+        composable(route = Screen.Onboarding.route) {
+            OnboardingScreen(
+                onOnboardingComplete = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    }
+                }
+            )
         }
-        composable(Screen.Home.route) {
-            Text(text = "Home Screen")
+
+        composable(route = Screen.Home.route) {
+            PlaceholderScreen(name = "Home")
         }
-        composable(Screen.Countdown.route) {
-            Text(text = "Countdown Screen")
+
+        composable(route = Screen.Countdown.route) {
+            PlaceholderScreen(name = "Countdown")
         }
-        composable(Screen.WalkMode.route) {
-            Text(text = "Walk Mode Screen")
+
+        composable(route = Screen.WalkMode.route) {
+            PlaceholderScreen(name = "Walk Mode")
         }
-        composable(Screen.Contacts.route) {
-            Text(text = "Contacts Screen")
+
+        composable(route = Screen.Contacts.route) {
+            PlaceholderScreen(name = "Contacts")
         }
-        composable(Screen.AddEditContact.route) {
-            Text(text = "Add / Edit Contact Screen")
+
+        composable(route = Screen.AddEditContact.route) {
+            PlaceholderScreen(name = "Add / Edit Contact")
         }
-        composable(Screen.IncidentHistory.route) {
-            Text(text = "Incident History Screen")
+
+        composable(route = Screen.IncidentHistory.route) {
+            PlaceholderScreen(name = "Incident History")
         }
-        composable(Screen.IncidentDetail.route) {
-            Text(text = "Incident Detail Screen")
+
+        composable(route = Screen.IncidentDetail.route) {
+            PlaceholderScreen(name = "Incident Detail")
         }
-        composable(Screen.Settings.route) {
-            Text(text = "Settings Screen")
+
+        composable(route = Screen.Settings.route) {
+            PlaceholderScreen(name = "Settings")
         }
-        composable(Screen.WhitelistInstructions.route) {
-            Text(text = "Whitelist Instructions Screen")
+
+        composable(route = Screen.WhitelistInstructions.route) {
+            PlaceholderScreen(name = "Whitelist Instructions")
         }
+    }
+}
+
+@Composable
+private fun PlaceholderScreen(name: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "$name Screen",
+            style = MaterialTheme.typography.headlineMedium
+        )
     }
 }
