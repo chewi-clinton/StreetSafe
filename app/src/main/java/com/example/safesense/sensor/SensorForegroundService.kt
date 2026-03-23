@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import com.example.safesense.sensor.engine.SensorFusionEngine
 import com.example.safesense.sensor.processor.AccelerometerProcessor
 import com.example.safesense.sensor.processor.ProximityProcessor
+import com.example.safesense.sensor.processor.GPSTracker
 import com.example.safesense.sensor.worker.SensorHeartbeatWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,7 @@ class SensorForegroundService : Service() {
     private lateinit var sensorManager: SensorManager
     private lateinit var accelerometerProcessor: AccelerometerProcessor
     private lateinit var proximityProcessor: ProximityProcessor
+    private lateinit var gpsTracker: GPSTracker
     private lateinit var fusionEngine: SensorFusionEngine
 
     override fun onCreate() {
@@ -45,6 +47,7 @@ class SensorForegroundService : Service() {
         fusionEngine = SensorFusionEngine(serviceScope)
         accelerometerProcessor = AccelerometerProcessor(sensorManager)
         proximityProcessor = ProximityProcessor(sensorManager)
+        gpsTracker = GPSTracker(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,6 +64,7 @@ class SensorForegroundService : Service() {
         super.onDestroy()
         accelerometerProcessor.stop()
         proximityProcessor.stop()
+        gpsTracker.stop()
         serviceScope.cancel()
     }
 
@@ -68,6 +72,7 @@ class SensorForegroundService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         accelerometerProcessor.start()
         proximityProcessor.start()
+        gpsTracker.start()
         collectAccelerometerEvents()
         collectProximityEvents()
         collectIncidents()
@@ -116,6 +121,7 @@ class SensorForegroundService : Service() {
     private fun stopSensorEngine() {
         accelerometerProcessor.stop()
         proximityProcessor.stop()
+        gpsTracker.stop()
         serviceScope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()

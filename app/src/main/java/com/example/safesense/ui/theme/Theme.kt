@@ -1,58 +1,65 @@
-package com.example.safesense.ui.theme
+package com.safesense.app.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+// ─── Color Scheme ─────────────────────────────────────────────────────────────
+// We define only ONE scheme (light). SafeSense does not use a dark theme —
+// the UI is built on red + greyscale and every screen specifies its own bg.
+private val SafeSenseColorScheme = lightColorScheme(
+    primary          = PrimaryRed,
+    onPrimary        = White,
+    primaryContainer = RedLight,
+    onPrimaryContainer = DeepRed,
+
+    secondary        = Gray600,
+    onSecondary      = White,
+    secondaryContainer = Gray100,
+    onSecondaryContainer = Gray900,
+
+    background       = OffWhite,
+    onBackground     = Gray900,
+
+    surface          = White,
+    onSurface        = Gray900,
+    surfaceVariant   = Gray100,
+    onSurfaceVariant = Gray600,
+
+    outline          = Gray200,
+    outlineVariant   = RedSoft,
+
+    error            = PrimaryRed,
+    onError          = White,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-)
-
+// ─── Theme Entry Point ────────────────────────────────────────────────────────
 @Composable
 fun SafeSenseTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
+    val colorScheme = SafeSenseColorScheme
+    val view = LocalView.current
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    // This makes the status bar color match the top of your screen.
+    // SideEffect runs after every recomposition — it keeps the bar in sync.
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = colorScheme.primary.toArgb()
+            WindowCompat.getInsetsController(window, view)
+                .isAppearanceLightStatusBars = false // white icons on red bar
+        }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+        typography  = SafeSenseTypography,
+        content     = content
     )
 }
