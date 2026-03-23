@@ -13,6 +13,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.safesense.sensor.engine.SensorFusionEngine
 import com.example.safesense.sensor.processor.AccelerometerProcessor
+import com.example.safesense.sensor.processor.ProximityProcessor
 import com.example.safesense.sensor.worker.SensorHeartbeatWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class SensorForegroundService : Service() {
 
     private lateinit var sensorManager: SensorManager
     private lateinit var accelerometerProcessor: AccelerometerProcessor
+    private lateinit var proximityProcessor: ProximityProcessor
     private lateinit var fusionEngine: SensorFusionEngine
 
     override fun onCreate() {
@@ -42,6 +44,7 @@ class SensorForegroundService : Service() {
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         fusionEngine = SensorFusionEngine(serviceScope)
         accelerometerProcessor = AccelerometerProcessor(sensorManager)
+        proximityProcessor = ProximityProcessor(sensorManager)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -57,13 +60,16 @@ class SensorForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         accelerometerProcessor.stop()
+        proximityProcessor.stop()
         serviceScope.cancel()
     }
 
     private fun startSensorEngine() {
         startForeground(NOTIFICATION_ID, buildNotification())
         accelerometerProcessor.start()
+        proximityProcessor.start()
         collectAccelerometerEvents()
+        collectProximityEvents()
         collectIncidents()
         scheduleHeartbeat()
     }
@@ -72,6 +78,14 @@ class SensorForegroundService : Service() {
         serviceScope.launch {
             accelerometerProcessor.accelerometerEvents.collect { event ->
                 fusionEngine.onAccelerometerEvent(event)
+            }
+        }
+    }
+
+    private fun collectProximityEvents() {
+        serviceScope.launch {
+            proximityProcessor.proximityEvents.collect { event ->
+                fusionEngine.onProximityChanged(event.timestamp)
             }
         }
     }
@@ -101,6 +115,7 @@ class SensorForegroundService : Service() {
 
     private fun stopSensorEngine() {
         accelerometerProcessor.stop()
+        proximityProcessor.stop()
         serviceScope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
