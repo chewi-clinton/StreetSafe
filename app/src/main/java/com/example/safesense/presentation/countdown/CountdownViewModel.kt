@@ -2,6 +2,7 @@ package com.example.safesense.presentation.countdown
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.safesense.sensor.engine.IncidentType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +43,7 @@ class CountdownViewModel : ViewModel() {
     private fun dispatchAlert() {
         // SMS dispatch will be wired here in a later step
         _state.value = CountdownState.AlertDispatched(
-            contactsNotified = 0, // placeholder until SMS step
+            contactsNotified = 0,
             timestamp = System.currentTimeMillis()
         )
     }

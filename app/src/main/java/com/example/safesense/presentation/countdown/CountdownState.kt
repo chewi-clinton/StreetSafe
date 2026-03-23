@@ -1,5 +1,7 @@
 package com.example.safesense.presentation.countdown
 
+import com.example.safesense.sensor.engine.IncidentType
+
 sealed class CountdownState {
 
     object Idle : CountdownState()
@@ -16,10 +18,4 @@ sealed class CountdownState {
     ) : CountdownState()
 
     object CancelledByUser : CountdownState()
-}
-
-enum class IncidentType {
-    FALL,
-    COLLISION,
-    SHAKE_GESTURE
 }
