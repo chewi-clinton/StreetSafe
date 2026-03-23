@@ -1,4 +1,4 @@
-package com.safesense.app.ui.theme
+package com.example.safesense.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
