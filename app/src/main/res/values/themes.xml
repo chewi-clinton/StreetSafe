@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.SafeSense" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- This attribute tells the system NOT to show the preview/splash window -->
+        <!-- allowing the app to go straight to your custom Compose splash screen -->
+        <item name="android:windowDisablePreview">true</item>
 
-    <style name="Theme.SafeSense" parent="android:Theme.Material.Light.NoActionBar" />
+        <!-- Background color for older versions -->
+        <item name="android:windowBackground">#CC0000</item>
+    </style>
 </resources>

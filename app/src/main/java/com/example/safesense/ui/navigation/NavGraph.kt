@@ -24,21 +24,8 @@ import kotlinx.coroutines.flow.map
 // NavGraph.kt
 // Location: ui/navigation/NavGraph.kt
 //
-// WHAT CHANGED FROM THE PREVIOUS VERSION:
-//   1. startDestination is now always Screen.Splash.route — every launch
-//      begins at the splash screen, no exceptions.
-//   2. Added the splash composable. When its 3-second animation finishes,
-//      it reads the DataStore flag and navigates to either Onboarding or Home.
-//   3. The DataStore read moved INSIDE the splash composable's onSplashComplete
-//      lambda rather than controlling the start destination. This is cleaner
-//      because the splash screen always shows regardless of onboarding state.
-//
-// NAVIGATION FLOW:
-//   Every launch  → Splash (3s)
-//                      ↓
-//              onboarding_complete?
-//              YES → Home
-//              NO  → Onboarding → (on finish) → Home
+// UPDATED: Restored the custom SplashScreen to provide the full-screen red
+// experience the user preferred. Every launch starts at the Splash screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
@@ -49,15 +36,14 @@ fun SafeSenseNavGraph(
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier
 ) {
-    // Read onboarding flag — default false while loading.
-    // This is used inside the splash onSplashComplete lambda below.
+    // Read onboarding flag — used to decide where to go AFTER splash.
     val onboardingComplete by dataStore.data
         .map { prefs -> prefs[ONBOARDING_COMPLETE_KEY] ?: false }
         .collectAsState(initial = false)
 
     NavHost(
         navController = navController,
-        // Splash is ALWAYS the start destination — every single launch.
+        // Start at Splash to show the full red background brand experience.
         startDestination = Screen.Splash.route,
         modifier = modifier
     ) {
@@ -66,7 +52,6 @@ fun SafeSenseNavGraph(
         composable(route = Screen.Splash.route) {
             SplashScreen(
                 onSplashComplete = {
-                    // Decide where to go after the splash animation finishes.
                     val destination = if (onboardingComplete) {
                         Screen.Home.route
                     } else {
@@ -74,8 +59,6 @@ fun SafeSenseNavGraph(
                     }
 
                     navController.navigate(destination) {
-                        // Remove Splash from the back stack so pressing Back
-                        // from Onboarding or Home does not return to the splash.
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }

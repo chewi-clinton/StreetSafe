@@ -27,44 +27,25 @@ import kotlinx.coroutines.launch
 // Location: ui/splash/SplashScreen.kt
 //
 // PURPOSE:
-//   Displays a red background with the SafeSense logo for 3 seconds.
-//   After 3 seconds the logo scales up and fades out, then onOnboardingReady()
-//   is called which NavGraph uses to navigate to the real Onboarding screen.
+//   Displays a full red background with the SafeSense logo for 3 seconds.
+//   After 3 seconds the logo scales up and fades out, then navigates away.
 //
-// ANIMATION BREAKDOWN:
-//   0ms   → 2000ms  : Logo sits still at scale 1.0, alpha 1.0 (visible)
-//   2000ms → 3000ms : Logo scales from 1.0 → 1.4 AND fades from 1.0 → 0.0
-//   3000ms           : Navigate away
-//
-// NOTE ON THE RED COLOUR:
-//   Change the hex value in Color(0xFFCC0000) to match your exact brand red.
-//   0xFFCC0000 is a strong red. If you have a hex code from your design,
-//   replace CC0000 with your value. The FF prefix means fully opaque.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun SplashScreen(
     // Called by NavGraph when the 3-second splash is done.
-    // NavGraph will then navigate to Onboarding.
     onSplashComplete: () -> Unit
 ) {
-    // ── Animation values ──────────────────────────────────────────────────────
-    // Animatable lets us drive scale and alpha independently with precise timing.
-    // We start at scale 1.0 (normal size) and alpha 1.0 (fully visible).
     val scale = remember { Animatable(initialValue = 1f) }
     val alpha = remember { Animatable(initialValue = 1f) }
 
-    // LaunchedEffect runs once when the composable first appears.
-    // The key `true` means it never restarts — it runs exactly once.
     LaunchedEffect(key1 = true) {
-        // Hold the logo still for 2 seconds so the user can read it.
+        // Hold the logo still for 2 seconds.
         delay(2000L)
 
-        // Scale and fade run simultaneously using separate coroutine launches.
-        // We use kotlinx.coroutines launch to run them in parallel — if we
-        // called them sequentially the fade would only start after scale finished.
         coroutineScope {
-            // Scale up: 1.0 → 1.4 over 800ms with an ease-in curve
+            // Scale up: 1.0 → 1.4 over 800ms
             launch {
                 scale.animateTo(
                     targetValue = 1.4f,
@@ -80,26 +61,24 @@ fun SplashScreen(
             }
         }
 
-        // Both animations are done — tell NavGraph to navigate away.
+        // Animation done
         onSplashComplete()
     }
 
-    // ── UI ────────────────────────────────────────────────────────────────────
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Replace 0xFFCC0000 with your exact brand red hex code.
-            // Format: 0xFF followed by your 6-digit hex (e.g. 0xFFE63946)
-            .background(Color(0xFFB71C1C)),
+            // Restored the exact CC0000 red for full-screen background
+            .background(Color(0xFFCC0000)),
         contentAlignment = Alignment.Center
     ) {
         Image(
             painter = painterResource(id = R.drawable.safesense_logo),
             contentDescription = "SafeSense Logo",
             modifier = Modifier
-                .size(200.dp)           // Adjust size to fit your logo
-                .scale(scale.value)     // Drives the zoom-out animation
-                .alpha(alpha.value)     // Drives the fade-out animation
+                .size(200.dp)           
+                .scale(scale.value)     
+                .alpha(alpha.value)
         )
     }
 }
