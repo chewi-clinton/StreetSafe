@@ -1,7 +1,10 @@
 package com.example.safesense.ui.onboarding
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,27 +25,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,82 +54,57 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.safesense.R
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OnboardingScreen.kt
-// Location: ui/onboarding/OnboardingScreen.kt
-//
-// PURPOSE:
-//   A 5-step guided setup that every new user completes exactly once.
-//   After completion, NavGraph will never route here again.
-//
-// STEPS:
-//   0 → Welcome         (just read, tap Continue)
-//   1 → Permissions     (SMS + Location + Notifications)
-//   2 → Battery whitelist (only shown on Tecno / Infinix)
-//   3 → Add first contact
-//   4 → Sensor check
-//
-// HOW TO USE:
-//   In NavGraph.kt, call this composable for the "Onboarding" route.
-//   Pass onOnboardingComplete as the lambda that navigates to Home.
-//
-//   NavGraph reads the DataStore flag on startup. If the flag is true it skips
-//   this screen entirely and routes directly to Home.
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Colours imported directly from your theme file ────────────────────────────
+import com.example.safesense.ui.theme.DeepRed
+import com.example.safesense.ui.theme.Gray100
+import com.example.safesense.ui.theme.Gray200
+import com.example.safesense.ui.theme.Gray400
+import com.example.safesense.ui.theme.Gray600
+import com.example.safesense.ui.theme.Gray900
+import com.example.safesense.ui.theme.NearBlack
+import com.example.safesense.ui.theme.OffWhite
+import com.example.safesense.ui.theme.PrimaryRed
+import com.example.safesense.ui.theme.SuccessGreen
+import com.example.safesense.ui.theme.SuccessLight
+import com.example.safesense.ui.theme.White
 
 @Composable
 fun OnboardingScreen(
-    // Called by NavGraph when onboarding is fully done.
-    // NavGraph will pop this screen and navigate to Home.
     onOnboardingComplete: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
-    // Collect the UI state as Compose state.
-    // Every time the ViewModel updates uiState, Compose recomposes this screen.
     val state by viewModel.uiState.collectAsState()
 
-    // When isComplete becomes true, tell NavGraph to move to Home.
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) onOnboardingComplete()
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = OffWhite
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // ── Progress dots ─────────────────────────────────────────────────
-            StepProgressIndicator(
-                currentStep = state.currentStep,
-                totalSteps = state.totalSteps
-            )
+        Column(modifier = Modifier.fillMaxSize()) {
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Step content — slides left/right on step change ───────────────
-            // AnimatedContent swaps between step composables with a horizontal
-            // slide animation so the transition feels intentional, not abrupt.
             AnimatedContent(
                 targetState = state.currentStep,
                 transitionSpec = {
-                    // Slide in from right, slide out to left (forward direction)
-                    (slideInHorizontally { fullWidth -> fullWidth } + fadeIn()) togetherWith
-                            (slideOutHorizontally { fullWidth -> -fullWidth } + fadeOut())
+                    val forward = targetState > initialState
+                    (slideInHorizontally { w -> if (forward) w else -w } + fadeIn()) togetherWith
+                            (slideOutHorizontally { w -> if (forward) -w else w } + fadeOut())
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 label = "OnboardingStepAnimation"
             ) { step ->
                 when (step) {
@@ -141,15 +118,12 @@ fun OnboardingScreen(
                     3 -> StepAddContact(onContactAdded = { viewModel.onContactAdded() })
                     4 -> StepSensorCheck(
                         sensorsHealthy = state.sensorsHealthy,
-                        onCheckResult = { healthy -> viewModel.onSensorCheckResult(healthy) }
+                        onRunCheck = { viewModel.runSensorCheck() }
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Navigation buttons ────────────────────────────────────────────
-            NavigationButtons(
+            BottomNavigationBar(
                 currentStep = state.currentStep,
                 totalSteps = state.totalSteps,
                 canAdvance = canAdvanceFromStep(state),
@@ -160,10 +134,80 @@ fun OnboardingScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPER: Determines whether the Continue button is enabled for each step.
-// This is pure logic — no side effects.
-// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun BottomNavigationBar(
+    currentStep: Int,
+    totalSteps: Int,
+    canAdvance: Boolean,
+    onBack: () -> Unit,
+    onNext: () -> Unit
+) {
+    val isLastStep = currentStep == totalSteps - 1
+
+    Column {
+        HorizontalDivider(color = Gray200, thickness = 1.dp)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(White)
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box(modifier = Modifier.width(72.dp), contentAlignment = Alignment.CenterStart) {
+                TextButton(onClick = onBack) {
+                    Text(
+                        text = if (currentStep == 0) "SKIP" else "BACK",
+                        color = Gray600,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(totalSteps) { index ->
+                    val isActive = index == currentStep
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .size(width = if (isActive) 20.dp else 8.dp, height = 8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isActive) NearBlack else Gray400)
+                    )
+                }
+            }
+
+            Box(modifier = Modifier.width(88.dp), contentAlignment = Alignment.CenterEnd) {
+                Button(
+                    onClick = onNext,
+                    enabled = canAdvance,
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryRed,
+                        contentColor = White,
+                        disabledContainerColor = Gray400,
+                        disabledContentColor = White
+                    ),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text(
+                        text = if (isLastStep) "FINISH" else "NEXT",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun canAdvanceFromStep(state: OnboardingUiState): Boolean {
     return when (state.currentStep) {
         0 -> true
@@ -175,296 +219,161 @@ private fun canAdvanceFromStep(state: OnboardingUiState): Boolean {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 0 — WELCOME
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun StepWelcome() {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.Shield,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary
+        Image(
+            painter = painterResource(id = R.drawable.safesense_logo),
+            contentDescription = "SafeSense Logo",
+            modifier = Modifier.size(100.dp)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(40.dp))
 
         Text(
-            text = "Welcome to SafeSense",
-            style = MaterialTheme.typography.headlineLarge,
+            text = "Your silent safety net",
+            fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
+            color = Gray900,
+            textAlign = TextAlign.Center,
+            lineHeight = 34.sp
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "SafeSense watches over you silently through your phone's sensors.\n\n" +
-                    "If a fall, collision, or distress situation is detected, it sends an " +
-                    "SMS alert with your GPS location to your emergency contacts — " +
+            text = "SafeSense monitors your phone's sensors in the background. " +
+                    "If a fall, collision, or distress situation is detected, it sends " +
+                    "an SMS alert with your GPS location to your emergency contacts — " +
                     "automatically, with no internet required.",
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 15.sp,
+            color = Gray600,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            lineHeight = 22.sp
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        ) {
-            Text(
-                text = "⚡ Setup takes about 3 minutes. You only do this once.",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 1 — PERMISSIONS
-// We request SMS, Location, and (on API 33+) Notifications.
-// Each permission gets its own launcher so we can track them independently.
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun StepPermissions(
-    state: OnboardingUiState,
-    viewModel: OnboardingViewModel
-) {
-    // Launchers for each permission request.
-    // rememberLauncherForActivityResult keeps the launcher stable across recompositions.
-    val smsLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> viewModel.onSmsPermissionResult(granted) }
-
-    val locationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        viewModel.onLocationPermissionResult(fineGranted)
-    }
-
-    val notificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> viewModel.onNotificationPermissionResult(granted) }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Required Permissions",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "SafeSense needs these to protect you. None of your data leaves your phone.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "Setup takes approximately 3 minutes. You will only do this once.",
+            fontSize = 13.sp,
+            color = Gray600,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontWeight = FontWeight.Medium
         )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // SMS permission row
-        PermissionRow(
-            title = "Send SMS",
-            description = "To send emergency alerts to your contacts without internet",
-            isGranted = state.smsPermissionGranted,
-            onRequest = { smsLauncher.launch(Manifest.permission.SEND_SMS) }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Location permission row
-        PermissionRow(
-            title = "Location",
-            description = "To include your GPS coordinates in the alert SMS",
-            isGranted = state.locationPermissionGranted,
-            onRequest = {
-                locationLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    )
-                )
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Notifications permission — only needed on Android 13 (API 33) and above.
-        // On older versions this permission doesn't exist, so we skip it.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            PermissionRow(
-                title = "Notifications",
-                description = "To alert you if the sensor service is paused by the system",
-                isGranted = state.notificationPermissionGranted,
-                onRequest = {
-                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            )
-        }
     }
 }
 
-// A single permission row with a status indicator and a request button.
-@Composable
-private fun PermissionRow(
-    title: String,
-    description: String,
-    isGranted: Boolean,
-    onRequest: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isGranted)
-                MaterialTheme.colorScheme.secondaryContainer
-            else
-                MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (isGranted) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Granted",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
-            } else {
-                Button(
-                    onClick = onRequest,
-                    modifier = Modifier.padding(start = 8.dp)
-                ) {
-                    Text("Allow")
-                }
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 2 — BATTERY WHITELIST
-// Only shown on Tecno and Infinix devices.
-// On all other devices (Samsung, Pixel, etc.) this step is skipped automatically.
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun StepBatteryWhitelist(
     showStep: Boolean,
     confirmed: Boolean,
     onConfirm: () -> Unit
 ) {
-    // If this device doesn't need the whitelist, show a success message and
-    // let the user proceed immediately.
     if (!showStep) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(SuccessLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = SuccessGreen,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text(
-                text = "Your device doesn't need battery whitelist setup.",
-                style = MaterialTheme.typography.bodyLarge,
+                text = "No action required",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Gray900,
                 textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Your device does not require battery optimisation adjustments. " +
+                        "SafeSense will run reliably in the background.",
+                fontSize = 14.sp,
+                color = Gray600,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
             )
         }
         return
     }
 
-    // Tecno / Infinix path — mandatory instructions
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(48.dp))
+
         Text(
-            text = "Important: Battery Settings",
-            style = MaterialTheme.typography.headlineMedium,
+            text = "Battery optimisation",
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
+            color = Gray900,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = "Your device (Tecno/Infinix) aggressively stops background apps to save " +
-                    "battery. This will silently disable SafeSense while showing you a " +
-                    "notification that it is running — giving you false confidence.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.Center
+            text = "Your device restricts background apps. Without this step, SafeSense " +
+                    "will appear active but will not detect emergencies.",
+            fontSize = 14.sp,
+            color = Gray600,
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Gray100)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Steps to fix this:",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "1. Open Settings → App Management → SafeSense\n" +
-                            "2. Tap Battery → select \"No Restrictions\" or \"Unrestricted\"\n" +
-                            "3. Return here and tap the button below",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
+            InstructionRow(number = "1", text = "Open Settings and go to App Management")
+            InstructionRow(number = "2", text = "Find and tap SafeSense")
+            InstructionRow(number = "3", text = "Tap Battery, then select No Restrictions")
+            InstructionRow(number = "4", text = "Return here and confirm below")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = "Device settings look different on each firmware version.\n" +
-                    "Visit dontkillmyapp.com for device-specific screenshots.",
-            style = MaterialTheme.typography.bodySmall,
+            text = "Menu names vary by firmware. Visit dontkillmyapp.com for device-specific screenshots.",
+            fontSize = 12.sp,
+            color = Gray600,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            lineHeight = 17.sp
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -472,304 +381,320 @@ private fun StepBatteryWhitelist(
         Button(
             onClick = onConfirm,
             enabled = !confirmed,
-            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(50),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (confirmed)
-                    MaterialTheme.colorScheme.secondary
-                else
-                    MaterialTheme.colorScheme.primary
+                containerColor = PrimaryRed,
+                contentColor = White,
+                disabledContainerColor = Gray400,
+                disabledContentColor = White
             )
         ) {
-            Text(if (confirmed) "✓ Done — step complete" else "I Have Done This")
+            Text(
+                text = if (confirmed) "CONFIRMED" else "I HAVE DONE THIS",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 3 — ADD FIRST CONTACT
-// A minimal inline contact form — Name, phone number, relationship.
-// On save it calls onContactAdded() which updates the ViewModel.
-//
-// NOTE: In a full implementation this would write directly to Room via
-// a ContactRepository. For Block 3 we keep it self-contained so the screen
-// compiles. You will wire the repository in Block 4/5.
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun StepAddContact(
-    onContactAdded: () -> Unit
-) {
+private fun InstructionRow(number: String, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(PrimaryRed),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = number,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = White
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            color = Gray600,
+            lineHeight = 20.sp,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun StepAddContact(onContactAdded: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var relationship by remember { mutableStateOf("") }
     var contactSaved by remember { mutableStateOf(false) }
 
-    // Phone validation — must start with +237 (Cameroon) and have 12 digits total
     val phoneIsValid = phone.startsWith("+237") && phone.length >= 12
 
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = PrimaryRed,
+        focusedLabelColor = PrimaryRed,
+        cursorColor = PrimaryRed,
+        unfocusedBorderColor = Gray400,
+        unfocusedLabelColor = Gray600,
+        errorBorderColor = DeepRed,
+        errorLabelColor = DeepRed,
+        errorSupportingTextColor = DeepRed
+    )
+
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Default.ContactPhone,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         Text(
-            text = "Add Your First Emergency Contact",
-            style = MaterialTheme.typography.headlineSmall,
+            text = "Emergency contact",
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
+            color = Gray900,
             textAlign = TextAlign.Center
         )
 
+        Spacer(modifier = Modifier.height(10.dp))
+
         Text(
-            text = "This person will receive your SOS SMS if an incident is detected.",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "This person will receive your SOS message if an incident is detected. " +
+                    "You can add up to 5 contacts later in Settings.",
+            fontSize = 14.sp,
+            color = Gray600,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            lineHeight = 20.sp
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("Full Name") },
-            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+            label = { Text("Full name") },
+            leadingIcon = {
+                Icon(Icons.Default.Person, contentDescription = null, tint = Gray600)
+            },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
+            colors = textFieldColors
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         OutlinedTextField(
             value = phone,
             onValueChange = { phone = it },
-            label = { Text("Phone Number (+237...)") },
-            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+            label = { Text("Phone number (+237...)") },
+            leadingIcon = {
+                Icon(Icons.Default.Phone, contentDescription = null, tint = Gray600)
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             isError = phone.isNotEmpty() && !phoneIsValid,
             supportingText = {
                 if (phone.isNotEmpty() && !phoneIsValid) {
-                    Text("Must start with +237 (e.g. +237612345678)")
+                    Text(
+                        text = "Must start with +237 \u2014 e.g. +237612345678",
+                        color = DeepRed,
+                        fontSize = 12.sp
+                    )
                 }
-            }
+            },
+            colors = textFieldColors
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         OutlinedTextField(
             value = relationship,
             onValueChange = { relationship = it },
             label = { Text("Relationship (e.g. Mother, Brother)") },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
+            colors = textFieldColors
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (contactSaved) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(SuccessLight),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.Check,
+                        imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "  Contact saved — you can add more in Settings later.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Contact saved. You can add more in Settings.",
+                    fontSize = 14.sp,
+                    color = Gray600
+                )
             }
         } else {
             Button(
                 onClick = {
-                    // TODO (Block 5): replace this with a real Room insert via ContactRepository
-                    // For now we just mark it done so the step unlocks.
                     if (name.isNotBlank() && phoneIsValid) {
                         contactSaved = true
                         onContactAdded()
                     }
                 },
                 enabled = name.isNotBlank() && phoneIsValid,
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(50),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PrimaryRed,
+                    contentColor = White,
+                    disabledContainerColor = Gray400,
+                    disabledContentColor = White
+                )
             ) {
-                Text("Save Contact")
+                Text(
+                    text = "SAVE CONTACT",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 4 — SENSOR CHECK
-// Verifies that the accelerometer and proximity sensor respond.
-// In Block 3 this is a placeholder that auto-passes after 2 seconds.
-// In a later block you will wire SensorManager to do a real check.
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun StepSensorCheck(
     sensorsHealthy: Boolean,
-    onCheckResult: (Boolean) -> Unit
+    onRunCheck: () -> Unit
 ) {
     var checking by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = Icons.Default.Sensors,
             contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Sensor Check",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "SafeSense will verify that your accelerometer and proximity sensor " +
-                    "are working correctly.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            modifier = Modifier.size(56.dp),
+            tint = PrimaryRed
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        Text(
+            text = "Sensor verification",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            color = Gray900,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "SafeSense will confirm that your accelerometer and proximity sensor " +
+                    "are functioning correctly before activating monitoring.",
+            fontSize = 14.sp,
+            color = Gray600,
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp
+        )
+
+        Spacer(modifier = Modifier.height(36.dp))
+
         when {
             sensorsHealthy -> {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = Color(0xFF2E7D32) // green
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(SuccessLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "All sensors are working correctly.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color(0xFF2E7D32),
-                    fontWeight = FontWeight.SemiBold
+                    text = "All sensors verified",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Gray900
                 )
             }
 
             checking -> {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Checking sensors...")
-
-                // Simulate check — replace with real SensorManager check in Block 7
+                CircularProgressIndicator(
+                    color = PrimaryRed,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Verifying sensors...",
+                    fontSize = 14.sp,
+                    color = Gray600
+                )
+                
                 LaunchedEffect(Unit) {
                     kotlinx.coroutines.delay(2000)
+                    onRunCheck()
                     checking = false
-                    onCheckResult(true)
                 }
             }
 
             else -> {
                 Button(
                     onClick = { checking = true },
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryRed,
+                        contentColor = White
+                    )
                 ) {
-                    Text("Run Sensor Check")
+                    Text(
+                        text = "RUN SENSOR CHECK",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
                 }
             }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PROGRESS INDICATOR — Row of dots showing which step you're on
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun StepProgressIndicator(
-    currentStep: Int,
-    totalSteps: Int
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center
-    ) {
-        repeat(totalSteps) { index ->
-            val isActive = index == currentStep
-            val isPast = index < currentStep
-
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .size(if (isActive) 12.dp else 8.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            isActive -> MaterialTheme.colorScheme.primary
-                            isPast -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                        }
-                    )
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NAVIGATION BUTTONS — Back + Continue/Finish at the bottom of every step
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun NavigationButtons(
-    currentStep: Int,
-    totalSteps: Int,
-    canAdvance: Boolean,
-    onBack: () -> Unit,
-    onNext: () -> Unit
-) {
-    val isLastStep = currentStep == totalSteps - 1
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Back button — hidden on the first step
-        if (currentStep > 0) {
-            OutlinedButton(onClick = onBack) {
-                Text("Back")
-            }
-        } else {
-            // Empty box to keep Continue button right-aligned on Step 0
-            Box(modifier = Modifier.size(0.dp))
-        }
-
-        Button(
-            onClick = onNext,
-            enabled = canAdvance
-        ) {
-            Text(if (isLastStep) "Finish Setup" else "Continue")
         }
     }
 }
