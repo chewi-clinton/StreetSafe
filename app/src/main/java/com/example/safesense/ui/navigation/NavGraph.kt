@@ -14,9 +14,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.safesense.presentation.history.IncidentHistoryScreen
 import com.example.safesense.ui.contacts.AddEditContactScreen
 import com.example.safesense.ui.contacts.ContactsScreen
 import com.example.safesense.ui.home.HomeScreen
@@ -28,7 +31,7 @@ import kotlinx.coroutines.flow.map
 // NavGraph.kt
 // Location: ui/navigation/NavGraph.kt
 //
-// UPDATED: Fixed phonebook import, added updateContact, and updated nav routes.
+// UPDATED: Wired up Incident History and Detail routes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
@@ -126,11 +129,19 @@ fun SafeSenseNavGraph(
 
         // ── INCIDENT HISTORY ──────────────────────────────────────────────────
         composable(route = Screen.IncidentHistory.route) {
-            PlaceholderScreen(name = "Incident History")
+            IncidentHistoryScreen(
+                onIncidentClick = { id ->
+                    navController.navigate(Screen.IncidentDetail.route + "/$id")
+                },
+                onBack = { navController.popBackStack() }
+            )
         }
 
         // ── INCIDENT DETAIL ───────────────────────────────────────────────────
-        composable(route = Screen.IncidentDetail.route) {
+        composable(
+            route = Screen.IncidentDetail.route + "/{incidentId}",
+            arguments = listOf(navArgument("incidentId") { type = NavType.LongType })
+        ) {
             PlaceholderScreen(name = "Incident Detail")
         }
 

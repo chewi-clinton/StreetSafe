@@ -1,2 +1,7 @@
 package com.example.safesense.domain.model
-// TODO: Phase 1 Step 2 — AlertResult domain model
+
+data class AlertResult(
+    val contactName: String,
+    val isSuccess: Boolean,
+    val timestamp: Long = System.currentTimeMillis()
+)

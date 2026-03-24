@@ -1,2 +1,8 @@
 package com.example.safesense.domain.model
-// TODO: Phase 1 Step 2 — ConfidenceLevel domain model
+
+
+enum class ConfidenceLevel {
+    LOW,
+    MEDIUM,
+    HIGH
+}

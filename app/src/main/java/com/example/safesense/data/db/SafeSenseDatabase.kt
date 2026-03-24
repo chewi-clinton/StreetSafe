@@ -3,18 +3,17 @@ package com.example.safesense.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.example.safesense.data.db.dao.ContactDao
+import com.example.safesense.data.db.dao.IncidentDao
 import com.example.safesense.data.db.entity.ContactEntity
+import com.example.safesense.data.db.entity.IncidentEntity
 
-// entities = every table in this database. Add IncidentEntity and SessionEntity here later.
-// version = 1 for now. Bump this number whenever you change a table's structure.
-// exportSchema = false keeps things simple while building — set to true before production.
 @Database(
-    entities = [ContactEntity::class],
-    version = 1,
+    entities = [ContactEntity::class, IncidentEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class SafeSenseDatabase : RoomDatabase() {
 
-    // Room generates the implementation of this automatically
     abstract fun contactDao(): ContactDao
+    abstract fun incidentDao(): IncidentDao
 }
