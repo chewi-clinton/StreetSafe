@@ -1,11 +1,24 @@
 package com.example.safesense.di
 
+import com.example.safesense.data.repository.ContactRepositoryImpl
+import com.example.safesense.domain.repository.ContactRepository
+import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 
+// @Binds is more efficient than @Provides for this case —
+// it tells Hilt: "whenever someone asks for ContactRepository, give them ContactRepositoryImpl"
+// No manual object creation needed — Hilt builds ContactRepositoryImpl automatically
+// because it has @Inject on its constructor
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class RepositoryModule
-// abstract class (not object) because repository binding uses @Binds
-// which requires an abstract function — we'll add those in Phase 1 Step 2
+abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindContactRepository(
+        impl: ContactRepositoryImpl
+    ): ContactRepository
+}

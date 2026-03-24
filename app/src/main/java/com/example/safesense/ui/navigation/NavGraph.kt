@@ -1,5 +1,6 @@
 package com.example.safesense.ui.navigation
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +17,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.safesense.ui.contacts.AddEditContactScreen
+import com.example.safesense.ui.contacts.ContactsScreen
 import com.example.safesense.ui.home.HomeScreen
 import com.example.safesense.ui.onboarding.OnboardingScreen
 import com.example.safesense.ui.splash.SplashScreen
@@ -25,12 +28,12 @@ import kotlinx.coroutines.flow.map
 // NavGraph.kt
 // Location: ui/navigation/NavGraph.kt
 //
-// UPDATED: HomeScreen is now wired in, replacing PlaceholderScreen("Home").
-//          All four nav callbacks connect to their respective routes.
+// UPDATED: Fixed phonebook import, added updateContact, and updated nav routes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
 
+@SuppressLint("FlowOperatorInvokedInComposition")
 @Composable
 fun SafeSenseNavGraph(
     dataStore: DataStore<Preferences>,
@@ -96,12 +99,29 @@ fun SafeSenseNavGraph(
 
         // ── CONTACTS ──────────────────────────────────────────────────────────
         composable(route = Screen.Contacts.route) {
-            PlaceholderScreen(name = "Contacts")
+            ContactsScreen(
+                onNavigateToManualAdd = { navController.navigate("add_contact") },
+                onNavigateToEdit = { id -> navController.navigate("edit_contact/$id") }
+            )
         }
 
-        // ── ADD / EDIT CONTACT ────────────────────────────────────────────────
-        composable(route = Screen.AddEditContact.route) {
-            PlaceholderScreen(name = "Add / Edit Contact")
+        // ── ADD CONTACT ───────────────────────────────────────────────────────
+        composable("add_contact") {
+            AddEditContactScreen(
+                contactId = null,
+                onSaveComplete = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // ── EDIT CONTACT ──────────────────────────────────────────────────────
+        composable("edit_contact/{contactId}") { backStackEntry ->
+            val contactId = backStackEntry.arguments?.getString("contactId")?.toIntOrNull()
+            AddEditContactScreen(
+                contactId = contactId,
+                onSaveComplete = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }
+            )
         }
 
         // ── INCIDENT HISTORY ──────────────────────────────────────────────────

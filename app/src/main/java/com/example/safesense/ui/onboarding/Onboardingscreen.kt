@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.safesense.R
+import com.example.safesense.domain.model.EmergencyContact
 
 // ── Colours imported directly from your theme file ────────────────────────────
 import com.example.safesense.ui.theme.DeepRed
@@ -78,10 +79,19 @@ import com.example.safesense.ui.theme.SuccessGreen
 import com.example.safesense.ui.theme.SuccessLight
 import com.example.safesense.ui.theme.White
 
+// ── We also need ContactsViewModel to actually write the contact to the database ──
+import com.example.safesense.ui.contacts.ContactsViewModel
+
 @Composable
 fun OnboardingScreen(
     onOnboardingComplete: () -> Unit,
-    viewModel: OnboardingViewModel = hiltViewModel()
+    // OnboardingViewModel handles step logic and completion flag
+    viewModel: OnboardingViewModel = hiltViewModel(),
+    // ContactsViewModel gives us access to insertContact() so the contact
+    // added during onboarding is saved to the same Room database that
+    // ContactsScreen reads from. Without this, the contact was only stored
+    // as a boolean flag (hasAtLeastOneContact) and never persisted.
+    contactsViewModel: ContactsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -115,7 +125,23 @@ fun OnboardingScreen(
                         confirmed = state.batteryWhitelistDone,
                         onConfirm = { viewModel.onBatteryWhitelistConfirmed() }
                     )
-                    3 -> StepAddContact(onContactAdded = { viewModel.onContactAdded() })
+                    3 -> StepAddContact(
+                        // FIX: we now pass a lambda that does two things:
+                        // 1. Saves the contact to Room via contactsViewModel.insertContact()
+                        // 2. Tells onboardingViewModel a contact exists so NEXT unlocks
+                        onContactSaved = { name, phone, relationship ->
+                            contactsViewModel.insertContact(
+                                EmergencyContact(
+                                    id = 0,
+                                    name = name,
+                                    phoneNumber = phone,
+                                    relationship = relationship,
+                                    isActive = true
+                                )
+                            )
+                            viewModel.onContactAdded()
+                        }
+                    )
                     4 -> StepSensorCheck(
                         sensorsHealthy = state.sensorsHealthy,
                         onRunCheck = { viewModel.runSensorCheck() }
@@ -430,8 +456,21 @@ private fun InstructionRow(number: String, text: String) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX: signature changed from onContactAdded: () -> Unit
+//      to   onContactSaved: (name, phone, relationship) -> Unit
+//
+// The old version only called onContactAdded() which set a boolean flag.
+// That flag unlocked the NEXT button but never wrote anything to the database.
+// The Contacts screen reads from Room via ContactsViewModel, so it saw nothing.
+//
+// Now we pass the actual field values up to OnboardingScreen, which calls
+// contactsViewModel.insertContact() before calling viewModel.onContactAdded().
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun StepAddContact(onContactAdded: () -> Unit) {
+private fun StepAddContact(
+    onContactSaved: (name: String, phone: String, relationship: String) -> Unit
+) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var relationship by remember { mutableStateOf("") }
@@ -559,8 +598,9 @@ private fun StepAddContact(onContactAdded: () -> Unit) {
             Button(
                 onClick = {
                     if (name.isNotBlank() && phoneIsValid) {
+                        // Pass all three values up so the parent can write to Room
+                        onContactSaved(name.trim(), phone.trim(), relationship.trim())
                         contactSaved = true
-                        onContactAdded()
                     }
                 },
                 enabled = name.isNotBlank() && phoneIsValid,
@@ -667,7 +707,7 @@ private fun StepSensorCheck(
                     fontSize = 14.sp,
                     color = Gray600
                 )
-                
+
                 LaunchedEffect(Unit) {
                     kotlinx.coroutines.delay(2000)
                     onRunCheck()
