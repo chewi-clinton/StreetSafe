@@ -1,6 +1,5 @@
 package com.example.safesense.ui.history
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,14 +20,17 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.safesense.domain.model.Incident
-import com.example.safesense.domain.model.IncidentType
 import com.example.safesense.domain.model.AlertStatus
+import com.example.safesense.ui.components.SafeSenseBottomNavBar
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IncidentHistoryScreen(
+    onNavigateToHome: () -> Unit = {},
+    onNavigateToContacts: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     onIncidentClick: (Long) -> Unit,
     onBack: () -> Unit,
     viewModel: IncidentHistoryViewModel = hiltViewModel()
@@ -72,6 +73,18 @@ fun IncidentHistoryScreen(
                         IconButton(onClick = { showDeleteAllDialog = true }) {
                             Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All")
                         }
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            SafeSenseBottomNavBar(
+                selectedIndex = 1,
+                onItemSelected = { index ->
+                    when (index) {
+                        0 -> onNavigateToHome()
+                        2 -> onNavigateToContacts()
+                        3 -> onNavigateToSettings()
                     }
                 }
             )

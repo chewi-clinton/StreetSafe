@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.safesense.domain.model.EmergencyContact
+import com.example.safesense.ui.components.SafeSenseBottomNavBar
 
 private val PrimaryRed = Color(0xFFD32F2F)
 private val RedLight = Color(0xFFFFEBEE)
@@ -46,6 +47,9 @@ private const val MAX_CONTACTS = 5
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsScreen(
+    onNavigateToHome: () -> Unit = {},
+    onNavigateToHistory: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     onNavigateToManualAdd: () -> Unit,
     onNavigateToEdit: (Int) -> Unit,
     viewModel: ContactsViewModel = hiltViewModel()
@@ -105,7 +109,19 @@ fun ContactsScreen(
 
     Scaffold(
         containerColor = White,
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            SafeSenseBottomNavBar(
+                selectedIndex = 2,
+                onItemSelected = { index ->
+                    when (index) {
+                        0 -> onNavigateToHome()
+                        1 -> onNavigateToHistory()
+                        3 -> onNavigateToSettings()
+                    }
+                }
+            )
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier

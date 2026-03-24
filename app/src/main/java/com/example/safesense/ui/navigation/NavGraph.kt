@@ -19,20 +19,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.safesense.presentation.history.IncidentHistoryScreen
+import com.example.safesense.domain.model.ConfidenceLevel
+import com.example.safesense.domain.model.IncidentType
+import com.example.safesense.ui.countdown.CountdownScreen
+import com.example.safesense.ui.history.IncidentHistoryScreen
 import com.example.safesense.ui.contacts.AddEditContactScreen
 import com.example.safesense.ui.contacts.ContactsScreen
 import com.example.safesense.ui.home.HomeScreen
 import com.example.safesense.ui.onboarding.OnboardingScreen
+import com.example.safesense.ui.settings.SettingsScreen
 import com.example.safesense.ui.splash.SplashScreen
 import kotlinx.coroutines.flow.map
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NavGraph.kt
-// Location: ui/navigation/NavGraph.kt
-//
-// UPDATED: Wired up Incident History and Detail routes.
-// ─────────────────────────────────────────────────────────────────────────────
 
 private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
 
@@ -47,21 +44,48 @@ fun SafeSenseNavGraph(
         .map { prefs -> prefs[ONBOARDING_COMPLETE_KEY] ?: false }
         .collectAsState(initial = false)
 
+    val navigateToHome = {
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = true }
+        }
+    }
+
+    val navigateToHistory = {
+        navController.navigate(Screen.IncidentHistory.route) {
+            popUpTo(Screen.Home.route)
+        }
+    }
+
+    val navigateToContacts = {
+        navController.navigate(Screen.Contacts.route) {
+            popUpTo(Screen.Home.route)
+        }
+    }
+
+    val navigateToSettings = {
+        navController.navigate(Screen.Settings.route) {
+            popUpTo(Screen.Home.route)
+        }
+    }
+
+    val navigateToCountdown = {
+        navController.navigate(
+            Screen.Countdown.route
+                .replace("{incidentType}", IncidentType.SHAKE.name)
+                .replace("{confidence}", ConfidenceLevel.HIGH.name)
+        )
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Splash.route,
         modifier = modifier
     ) {
 
-        // ── SPLASH ────────────────────────────────────────────────────────────
         composable(route = Screen.Splash.route) {
             SplashScreen(
                 onSplashComplete = {
-                    val destination = if (onboardingComplete) {
-                        Screen.Home.route
-                    } else {
-                        Screen.Onboarding.route
-                    }
+                    val destination = if (onboardingComplete) Screen.Home.route else Screen.Onboarding.route
                     navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
@@ -69,7 +93,6 @@ fun SafeSenseNavGraph(
             )
         }
 
-        // ── ONBOARDING ────────────────────────────────────────────────────────
         composable(route = Screen.Onboarding.route) {
             OnboardingScreen(
                 onOnboardingComplete = {
@@ -80,35 +103,51 @@ fun SafeSenseNavGraph(
             )
         }
 
-        // ── HOME ──────────────────────────────────────────────────────────────
         composable(route = Screen.Home.route) {
             HomeScreen(
-                onNavigateToHistory  = { navController.navigate(Screen.IncidentHistory.route) },
-                onNavigateToContacts = { navController.navigate(Screen.Contacts.route) },
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToHistory = navigateToHistory,
+                onNavigateToContacts = navigateToContacts,
+                onNavigateToSettings = navigateToSettings,
                 onNavigateToWalkMode = { navController.navigate(Screen.WalkMode.route) }
             )
         }
 
-        // ── COUNTDOWN ─────────────────────────────────────────────────────────
-        composable(route = Screen.Countdown.route) {
-            PlaceholderScreen(name = "Countdown")
+        composable(
+            route = Screen.Countdown.route,
+            arguments = listOf(
+                navArgument("incidentType") { type = NavType.StringType },
+                navArgument("confidence") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val incidentType = backStackEntry.arguments?.getString("incidentType")
+                ?.let { runCatching { IncidentType.valueOf(it) }.getOrDefault(IncidentType.SHAKE) }
+                ?: IncidentType.SHAKE
+            val confidence = backStackEntry.arguments?.getString("confidence")
+                ?.let { runCatching { ConfidenceLevel.valueOf(it) }.getOrDefault(ConfidenceLevel.HIGH) }
+                ?: ConfidenceLevel.HIGH
+
+            CountdownScreen(
+                incidentType = incidentType,
+                confidence = confidence,
+                onCancelled = { navController.popBackStack() },
+                onAlertSent = { navController.popBackStack() }
+            )
         }
 
-        // ── WALK MODE ─────────────────────────────────────────────────────────
         composable(route = Screen.WalkMode.route) {
             PlaceholderScreen(name = "Walk Mode")
         }
 
-        // ── CONTACTS ──────────────────────────────────────────────────────────
         composable(route = Screen.Contacts.route) {
             ContactsScreen(
+                onNavigateToHome = navigateToHome,
+                onNavigateToHistory = navigateToHistory,
+                onNavigateToSettings = navigateToSettings,
                 onNavigateToManualAdd = { navController.navigate("add_contact") },
                 onNavigateToEdit = { id -> navController.navigate("edit_contact/$id") }
             )
         }
 
-        // ── ADD CONTACT ───────────────────────────────────────────────────────
         composable("add_contact") {
             AddEditContactScreen(
                 contactId = null,
@@ -117,7 +156,6 @@ fun SafeSenseNavGraph(
             )
         }
 
-        // ── EDIT CONTACT ──────────────────────────────────────────────────────
         composable("edit_contact/{contactId}") { backStackEntry ->
             val contactId = backStackEntry.arguments?.getString("contactId")?.toIntOrNull()
             AddEditContactScreen(
@@ -127,9 +165,11 @@ fun SafeSenseNavGraph(
             )
         }
 
-        // ── INCIDENT HISTORY ──────────────────────────────────────────────────
         composable(route = Screen.IncidentHistory.route) {
             IncidentHistoryScreen(
+                onNavigateToHome = navigateToHome,
+                onNavigateToContacts = navigateToContacts,
+                onNavigateToSettings = navigateToSettings,
                 onIncidentClick = { id ->
                     navController.navigate(Screen.IncidentDetail.route + "/$id")
                 },
@@ -137,7 +177,6 @@ fun SafeSenseNavGraph(
             )
         }
 
-        // ── INCIDENT DETAIL ───────────────────────────────────────────────────
         composable(
             route = Screen.IncidentDetail.route + "/{incidentId}",
             arguments = listOf(navArgument("incidentId") { type = NavType.LongType })
@@ -145,12 +184,15 @@ fun SafeSenseNavGraph(
             PlaceholderScreen(name = "Incident Detail")
         }
 
-        // ── SETTINGS ──────────────────────────────────────────────────────────
         composable(route = Screen.Settings.route) {
-            PlaceholderScreen(name = "Settings")
+            SettingsScreen(
+                onNavigateToHome = navigateToHome,
+                onNavigateToContacts = navigateToContacts,
+                onNavigateToHistory = navigateToHistory,
+                onNavigateToCountdown = navigateToCountdown
+            )
         }
 
-        // ── WHITELIST INSTRUCTIONS ────────────────────────────────────────────
         composable(route = Screen.WhitelistInstructions.route) {
             PlaceholderScreen(name = "Whitelist Instructions")
         }
@@ -159,13 +201,7 @@ fun SafeSenseNavGraph(
 
 @Composable
 private fun PlaceholderScreen(name: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "$name Screen",
-            style = MaterialTheme.typography.headlineMedium
-        )
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text = "$name Screen", style = MaterialTheme.typography.headlineMedium)
     }
 }

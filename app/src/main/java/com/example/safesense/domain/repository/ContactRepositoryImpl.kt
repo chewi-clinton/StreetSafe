@@ -21,6 +21,12 @@ class ContactRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun getActiveContacts(): Flow<List<EmergencyContact>> {
+        return contactDao.getActiveContacts().map { entityList ->
+            entityList.map { entity -> ContactMapper.toDomain(entity) }
+        }
+    }
+
     override suspend fun insertContact(contact: EmergencyContact) {
         contactDao.insertContact(ContactMapper.toEntity(contact))
     }

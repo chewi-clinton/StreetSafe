@@ -1,5 +1,8 @@
 package com.example.safesense.ui.home
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,6 +10,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,32 +32,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.ReceiptLong
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,15 +53,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import android.hardware.Sensor
-import android.hardware.SensorManager
-import android.content.Context
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.safesense.R
+import com.example.safesense.ui.components.SafeSenseBottomNavBar
 import com.example.safesense.ui.theme.DeepRed
 import com.example.safesense.ui.theme.Gray100
 import com.example.safesense.ui.theme.Gray200
@@ -80,39 +69,12 @@ import com.example.safesense.ui.theme.Gray900
 import com.example.safesense.ui.theme.PrimaryRed
 import com.example.safesense.ui.theme.RedLight
 import com.example.safesense.ui.theme.SuccessGreen
-import com.example.safesense.ui.theme.WarningAmber
 import com.example.safesense.ui.theme.White
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HomeScreen.kt
-// Location: ui/home/HomeScreen.kt
-//
-// Full production layout for the SafeSense Home screen.
-// Matches the approved mockup exactly. Uses only theme colour variables —
-// no raw Color.Red or default Material colours anywhere.
-//
-// COMPOSABLE STRUCTURE:
-//   HomeScreen                  — root, collects state, owns Scaffold
-//   ├─ TopHeader                — red top bar with logo + bell
-//   ├─ MonitoringStatusCard     — DeepRed card with pulse dot (always active)
-//   ├─ FalsePositiveNudgeBanner — dismissible amber warning banner
-//   ├─ SensorGrid               — 2×2 pill grid (real SensorManager check)
-//   ├─ PanicAlertButton         — SOS button (reusable)
-//   ├─ ActionCards              — Walk Mode + History row
-//   ├─ RecentActivityList       — section header + activity rows
-//   └─ BottomNavBar             — 4-item nav bar
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Colour constants not yet in theme ─────────────────────────────────────────
 private val PulseDot          = Color(0xFF69F0AE)
-private val SuccessLight      = Color(0xFFE8F5E9)
 private val WarningLight      = Color(0xFFFFF8E1)
 private val WarningBorder     = Color(0xFFF57F17)
 private val WarningAmberLocal = Color(0xFFF57F17)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ROOT
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun HomeScreen(
@@ -123,27 +85,23 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedNavIndex by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
 
-    // Run real sensor check whenever the screen is composed.
-    // SensorManager is synchronous — no suspend needed.
     LaunchedEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         viewModel.updateSensorStatus(
             accelerometer = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null,
             proximity     = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null,
             gps           = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LOCATION_GPS),
-            audio         = false   // stays grey until RECORD_AUDIO permission granted in Phase 2
+            audio         = false
         )
     }
 
     Scaffold(
         bottomBar = {
-            BottomNavBar(
-                selectedIndex = selectedNavIndex,
+            SafeSenseBottomNavBar(
+                selectedIndex = 0,
                 onItemSelected = { index ->
-                    selectedNavIndex = index
                     when (index) {
                         1 -> onNavigateToHistory()
                         2 -> onNavigateToContacts()
@@ -160,7 +118,6 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
         ) {
-            // ── Red header zone ───────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,14 +127,12 @@ fun HomeScreen(
                 Column {
                     TopHeader()
                     MonitoringStatusCard(
-                        // App is always monitoring — no toggle
                         isMonitoring = true,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
             }
 
-            // ── White content zone ────────────────────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -223,10 +178,6 @@ fun HomeScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TOP HEADER
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun TopHeader() {
     Row(
@@ -236,15 +187,14 @@ private fun TopHeader() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.CenterStart) {
-            androidx.compose.foundation.Image(
+        Box(contentAlignment = Alignment.CenterStart) {
+            Image(
                 painter = painterResource(id = R.drawable.safesense_logo),
                 contentDescription = "SafeSense Logo",
                 modifier = Modifier.height(129.dp)
             )
         }
 
-        // Notification bell with translucent deep-red circle background
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -263,16 +213,11 @@ private fun TopHeader() {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MONITORING STATUS CARD
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun MonitoringStatusCard(
     isMonitoring: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // Pulsing scale animation for the dot when active
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.85f,
@@ -296,7 +241,6 @@ private fun MonitoringStatusCard(
             .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Pulse dot
         Box(
             modifier = Modifier
                 .size(14.dp)
@@ -323,10 +267,6 @@ private fun MonitoringStatusCard(
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FALSE POSITIVE NUDGE BANNER
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun FalsePositiveNudgeBanner(onDismiss: () -> Unit) {
@@ -364,10 +304,6 @@ private fun FalsePositiveNudgeBanner(onDismiss: () -> Unit) {
         )
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SENSOR GRID  (2 × 2)
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SensorGrid(
@@ -428,10 +364,6 @@ private fun SensorPill(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PANIC ALERT BUTTON  (reusable — also lives in ui/components/PanicButton.kt)
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 fun PanicAlertButton(
     onClick: () -> Unit,
@@ -442,7 +374,7 @@ fun PanicAlertButton(
         shape = RoundedCornerShape(16.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(80.dp),   // large target — must be easy to tap under stress
+            .height(80.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color(0xFFB71C1C),
             contentColor   = White
@@ -463,10 +395,6 @@ fun PanicAlertButton(
         )
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ACTION CARDS ROW — Walk Mode + History
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun ActionCards(
@@ -490,7 +418,6 @@ private fun ActionCards(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Walk Mode card
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -521,7 +448,6 @@ private fun ActionCards(
             }
         }
 
-        // History card
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -554,10 +480,6 @@ private fun ActionCards(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RECENT ACTIVITY LIST
-// ─────────────────────────────────────────────────────────────────────────────
-
 private data class ActivityItem(
     val icon: ImageVector,
     val iconTint: Color,
@@ -569,7 +491,6 @@ private data class ActivityItem(
 
 @Composable
 private fun RecentActivityList() {
-    // Hardcoded placeholder items — replaced by real data in Phase 2
     val items = listOf(
         ActivityItem(
             icon       = Icons.Filled.Accessibility,
@@ -621,7 +542,6 @@ private fun ActivityRow(item: ActivityItem) {
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Icon container
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -658,58 +578,5 @@ private fun ActivityRow(item: ActivityItem) {
             fontSize = 12.sp,
             color = Gray400
         )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BOTTOM NAVIGATION BAR
-// ─────────────────────────────────────────────────────────────────────────────
-
-private data class NavItem(val label: String, val icon: ImageVector)
-
-@Composable
-private fun BottomNavBar(
-    selectedIndex: Int,
-    onItemSelected: (Int) -> Unit
-) {
-    val items = listOf(
-        NavItem("Home",     Icons.Filled.Home),
-        NavItem("History",  Icons.Outlined.ReceiptLong),
-        NavItem("Contacts", Icons.Outlined.People),
-        NavItem("Settings", Icons.Outlined.Settings)
-    )
-
-    NavigationBar(
-        containerColor = White,
-        tonalElevation = 0.dp
-    ) {
-        items.forEachIndexed { index, item ->
-            val selected = index == selectedIndex
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onItemSelected(index) },
-                icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label,
-                        modifier = Modifier.size(24.dp)
-                    )
-                },
-                label = {
-                    Text(
-                        text = item.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor    = PrimaryRed,
-                    selectedTextColor    = PrimaryRed,
-                    unselectedIconColor  = Gray400,
-                    unselectedTextColor  = Gray400,
-                    indicatorColor       = White
-                )
-            )
-        }
     }
 }

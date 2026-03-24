@@ -10,6 +10,8 @@ interface ContactRepository {
 
     fun getAllContacts(): Flow<List<EmergencyContact>>
 
+    fun getActiveContacts(): Flow<List<EmergencyContact>>
+
     suspend fun insertContact(contact: EmergencyContact)
 
     suspend fun updateContact(contact: EmergencyContact)
