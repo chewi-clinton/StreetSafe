@@ -16,6 +16,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.safesense.ui.home.HomeScreen
 import com.example.safesense.ui.onboarding.OnboardingScreen
 import com.example.safesense.ui.splash.SplashScreen
 import kotlinx.coroutines.flow.map
@@ -24,8 +25,8 @@ import kotlinx.coroutines.flow.map
 // NavGraph.kt
 // Location: ui/navigation/NavGraph.kt
 //
-// UPDATED: Restored the custom SplashScreen to provide the full-screen red
-// experience the user preferred. Every launch starts at the Splash screen.
+// UPDATED: HomeScreen is now wired in, replacing PlaceholderScreen("Home").
+//          All four nav callbacks connect to their respective routes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
@@ -36,14 +37,12 @@ fun SafeSenseNavGraph(
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier
 ) {
-    // Read onboarding flag — used to decide where to go AFTER splash.
     val onboardingComplete by dataStore.data
         .map { prefs -> prefs[ONBOARDING_COMPLETE_KEY] ?: false }
         .collectAsState(initial = false)
 
     NavHost(
         navController = navController,
-        // Start at Splash to show the full red background brand experience.
         startDestination = Screen.Splash.route,
         modifier = modifier
     ) {
@@ -57,7 +56,6 @@ fun SafeSenseNavGraph(
                     } else {
                         Screen.Onboarding.route
                     }
-
                     navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
@@ -78,7 +76,12 @@ fun SafeSenseNavGraph(
 
         // ── HOME ──────────────────────────────────────────────────────────────
         composable(route = Screen.Home.route) {
-            PlaceholderScreen(name = "Home")
+            HomeScreen(
+                onNavigateToHistory  = { navController.navigate(Screen.IncidentHistory.route) },
+                onNavigateToContacts = { navController.navigate(Screen.Contacts.route) },
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToWalkMode = { navController.navigate(Screen.WalkMode.route) }
+            )
         }
 
         // ── COUNTDOWN ─────────────────────────────────────────────────────────
