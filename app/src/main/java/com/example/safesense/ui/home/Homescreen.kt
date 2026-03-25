@@ -40,6 +40,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,12 +90,12 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        // Note: gps is intentionally NOT passed here.
-        // The GPS dot is driven by GPSTracker.hasValidFix in the ViewModel.
+        // Accelerometer dot now comes from SensorForegroundService.accelerometerActive
+        // GPS dot now comes from GPSTracker.hasValidFix
+        // Only proximity and audio still come from PackageManager/SensorManager here
         viewModel.updateSensorStatus(
-            accelerometer = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null,
-            proximity     = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null,
-            audio         = false
+            proximity = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null,
+            audio     = false
         )
     }
 
@@ -128,7 +129,7 @@ fun HomeScreen(
                 Column {
                     TopHeader()
                     MonitoringStatusCard(
-                        isMonitoring = true,
+                        isMonitoring = state.isMonitoring,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
@@ -143,9 +144,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (state.showFalsePositiveNudge) {
-                    FalsePositiveNudgeBanner(
-                        onDismiss = { viewModel.dismissFalsePositiveNudge() }
-                    )
+                    FalsePositiveNudgeBanner(onDismiss = { viewModel.dismissFalsePositiveNudge() })
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
@@ -156,7 +155,27 @@ fun HomeScreen(
                     audioActive         = state.audioActive
                 )
 
-                // Block 3 debug Text removed — GPS test passed.
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (state.isMonitoring) {
+                    OutlinedButton(
+                        onClick = { viewModel.stopMonitoring() },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, PrimaryRed)
+                    ) {
+                        Text("Stop Monitoring", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = PrimaryRed)
+                    }
+                } else {
+                    Button(
+                        onClick = { viewModel.startMonitoring() },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed, contentColor = White)
+                    ) {
+                        Text("Start Monitoring", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -165,10 +184,10 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 ActionCards(
-                    recentIncidentCount  = state.recentIncidentCount,
-                    walkModeActive       = state.walkModeActive,
-                    onWalkMode           = onNavigateToWalkMode,
-                    onHistory            = onNavigateToHistory
+                    recentIncidentCount = state.recentIncidentCount,
+                    walkModeActive      = state.walkModeActive,
+                    onWalkMode          = onNavigateToWalkMode,
+                    onHistory           = onNavigateToHistory
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -184,9 +203,7 @@ fun HomeScreen(
 @Composable
 private fun TopHeader() {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -197,76 +214,41 @@ private fun TopHeader() {
                 modifier = Modifier.height(129.dp)
             )
         }
-
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(DeepRed.copy(alpha = 0.55f))
-                .clickable { /* TODO: navigate to notifications */ },
+                .clickable { },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Notifications,
-                contentDescription = "Notifications",
-                tint = White,
-                modifier = Modifier.size(22.dp)
-            )
+            Icon(Icons.Outlined.Notifications, "Notifications", tint = White, modifier = Modifier.size(22.dp))
         }
     }
 }
 
 @Composable
-private fun MonitoringStatusCard(
-    isMonitoring: Boolean,
-    modifier: Modifier = Modifier
-) {
+private fun MonitoringStatusCard(isMonitoring: Boolean, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
+        initialValue = 0.85f, targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
         label = "pulseScale"
     )
-
-    val dotColor = if (isMonitoring) PulseDot else Gray400
-    val statusText = if (isMonitoring) "Monitoring: Active" else "Monitoring: Paused"
-    val subtitleText = "Fall · Shake · Snatch detection running"
+    val dotColor     = if (isMonitoring) PulseDot else Gray400
+    val statusText   = if (isMonitoring) "Monitoring: Active" else "Monitoring: Paused"
+    val subtitleText = if (isMonitoring) "Fall · Shake · Snatch detection running" else "Tap Start Monitoring to activate"
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(DeepRed.copy(alpha = 0.6f))
-            .padding(horizontal = 18.dp, vertical = 16.dp),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(DeepRed.copy(alpha = 0.6f)).padding(horizontal = 18.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(14.dp)
-                .scale(if (isMonitoring) pulseScale else 1f)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
-
+        Box(modifier = Modifier.size(14.dp).scale(if (isMonitoring) pulseScale else 1f).clip(CircleShape).background(dotColor))
         Spacer(modifier = Modifier.width(14.dp))
-
         Column {
-            Text(
-                text = statusText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = White
-            )
-            Text(
-                text = subtitleText,
-                fontSize = 13.sp,
-                color = White.copy(alpha = 0.75f),
-                fontWeight = FontWeight.Medium
-            )
+            Text(statusText, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = White)
+            Text(subtitleText, fontSize = 13.sp, color = White.copy(alpha = 0.75f), fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -274,312 +256,123 @@ private fun MonitoringStatusCard(
 @Composable
 private fun FalsePositiveNudgeBanner(onDismiss: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(WarningLight)
-            .border(1.dp, WarningBorder, RoundedCornerShape(10.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .background(WarningLight).border(1.dp, WarningBorder, RoundedCornerShape(10.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Filled.Warning,
-            contentDescription = null,
-            tint = WarningAmberLocal,
-            modifier = Modifier.size(18.dp)
-        )
+        Icon(Icons.Filled.Warning, null, tint = WarningAmberLocal, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = "Too many false alerts? Adjust sensitivity in Settings.",
-            fontSize = 13.sp,
-            color = Color(0xFF5D4037),
-            modifier = Modifier.weight(1f),
-            lineHeight = 18.sp
-        )
+        Text("Too many false alerts? Adjust sensitivity in Settings.", fontSize = 13.sp,
+            color = Color(0xFF5D4037), modifier = Modifier.weight(1f), lineHeight = 18.sp)
         Spacer(modifier = Modifier.width(8.dp))
-        Icon(
-            imageVector = Icons.Filled.Close,
-            contentDescription = "Dismiss",
-            tint = Color(0xFF8D6E63),
-            modifier = Modifier
-                .size(18.dp)
-                .clickable { onDismiss() }
-        )
+        Icon(Icons.Filled.Close, "Dismiss", tint = Color(0xFF8D6E63),
+            modifier = Modifier.size(18.dp).clickable { onDismiss() })
     }
 }
 
 @Composable
 private fun SensorGrid(
-    accelerometerActive: Boolean,
-    gpsActive: Boolean,
-    proximityActive: Boolean,
-    audioActive: Boolean
+    accelerometerActive: Boolean, gpsActive: Boolean,
+    proximityActive: Boolean, audioActive: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SensorPill(label = "Accelerometer", active = accelerometerActive, modifier = Modifier.weight(1f))
-            SensorPill(label = "GPS",           active = gpsActive,           modifier = Modifier.weight(1f))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SensorPill("Accelerometer", accelerometerActive, Modifier.weight(1f))
+            SensorPill("GPS",           gpsActive,           Modifier.weight(1f))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SensorPill(label = "Proximity",    active = proximityActive, modifier = Modifier.weight(1f))
-            SensorPill(label = "Microphone",   active = audioActive,     modifier = Modifier.weight(1f))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SensorPill("Proximity",  proximityActive, Modifier.weight(1f))
+            SensorPill("Microphone", audioActive,     Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun SensorPill(
-    label: String,
-    active: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val dotColor by animateColorAsState(
-        targetValue = if (active) SuccessGreen else Gray400,
-        label = "sensorDotColor"
-    )
-
+private fun SensorPill(label: String, active: Boolean, modifier: Modifier = Modifier) {
+    val dotColor by animateColorAsState(if (active) SuccessGreen else Gray400, label = "sensorDotColor")
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50.dp))
-            .background(Gray100)
+        modifier = modifier.clip(RoundedCornerShape(50.dp)).background(Gray100)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(dotColor)
-        )
+        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(dotColor))
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            color = Gray900,
-            fontWeight = FontWeight.Medium
-        )
+        Text(label, fontSize = 14.sp, color = Gray900, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
-fun PanicAlertButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun PanicAlertButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(80.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFFB71C1C),
-            contentColor   = White
-        )
+        onClick = onClick, shape = RoundedCornerShape(16.dp),
+        modifier = modifier.fillMaxWidth().height(80.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C), contentColor = White)
     ) {
-        Icon(
-            imageVector = Icons.Filled.Warning,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = White
-        )
+        Icon(Icons.Filled.Warning, null, modifier = Modifier.size(24.dp), tint = White)
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = "Panic Alert",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
-        )
+        Text("Panic Alert", fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
     }
 }
 
 @Composable
-private fun ActionCards(
-    recentIncidentCount: Int,
-    walkModeActive: Boolean,
-    onWalkMode: () -> Unit,
-    onHistory: () -> Unit
-) {
-    val historySubtitle = if (recentIncidentCount == 0)
-        "No events today"
-    else
-        "$recentIncidentCount events today"
-
-    val walkModeBg         = if (walkModeActive) RedLight    else Gray100
-    val walkModeIconTint   = if (walkModeActive) PrimaryRed  else Gray900
-    val walkModeTitleColor = if (walkModeActive) DeepRed     else Gray900
-    val walkModeSubColor   = if (walkModeActive) PrimaryRed  else Gray600
+private fun ActionCards(recentIncidentCount: Int, walkModeActive: Boolean, onWalkMode: () -> Unit, onHistory: () -> Unit) {
+    val historySubtitle    = if (recentIncidentCount == 0) "No events today" else "$recentIncidentCount events today"
+    val walkModeBg         = if (walkModeActive) RedLight   else Gray100
+    val walkModeIconTint   = if (walkModeActive) PrimaryRed else Gray900
+    val walkModeTitleColor = if (walkModeActive) DeepRed    else Gray900
+    val walkModeSubColor   = if (walkModeActive) PrimaryRed else Gray600
     val walkModeSub        = if (walkModeActive) "Active — destination set" else "Set destination"
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(walkModeBg)
-                .clickable { onWalkMode() }
-                .padding(16.dp)
-        ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(walkModeBg).clickable { onWalkMode() }.padding(16.dp)) {
             Column {
-                Icon(
-                    imageVector = Icons.Outlined.Place,
-                    contentDescription = null,
-                    tint = walkModeIconTint,
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Outlined.Place, null, tint = walkModeIconTint, modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "Walk Mode",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = walkModeTitleColor
-                )
-                Text(
-                    text = walkModeSub,
-                    fontSize = 13.sp,
-                    color = walkModeSubColor
-                )
+                Text("Walk Mode", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = walkModeTitleColor)
+                Text(walkModeSub, fontSize = 13.sp, color = walkModeSubColor)
             }
         }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Gray100)
-                .clickable { onHistory() }
-                .padding(16.dp)
-        ) {
+        Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(Gray100).clickable { onHistory() }.padding(16.dp)) {
             Column {
-                Icon(
-                    imageVector = Icons.Outlined.DateRange,
-                    contentDescription = null,
-                    tint = Gray900,
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Outlined.DateRange, null, tint = Gray900, modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "History",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Gray900
-                )
-                Text(
-                    text = historySubtitle,
-                    fontSize = 13.sp,
-                    color = Gray600
-                )
+                Text("History", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Gray900)
+                Text(historySubtitle, fontSize = 13.sp, color = Gray600)
             }
         }
     }
 }
 
-private data class ActivityItem(
-    val icon: ImageVector,
-    val iconTint: Color,
-    val iconBg: Color,
-    val title: String,
-    val subtitle: String,
-    val time: String
-)
+private data class ActivityItem(val icon: ImageVector, val iconTint: Color, val iconBg: Color, val title: String, val subtitle: String, val time: String)
 
 @Composable
 private fun RecentActivityList() {
     val items = listOf(
-        ActivityItem(
-            icon       = Icons.Filled.Accessibility,
-            iconTint   = Gray600,
-            iconBg     = Gray100,
-            title      = "Fall detected — cancelled",
-            subtitle   = "False positive — user OK",
-            time       = "14:22"
-        ),
-        ActivityItem(
-            icon       = Icons.Filled.Warning,
-            iconTint   = WarningAmberLocal,
-            iconBg     = WarningLight,
-            title      = "Shake alert sent",
-            subtitle   = "SMS to 2 contacts",
-            time       = "11:05"
-        )
+        ActivityItem(Icons.Filled.Accessibility, Gray600, Gray100, "Fall detected — cancelled", "False positive — user OK", "14:22"),
+        ActivityItem(Icons.Filled.Warning, WarningAmberLocal, WarningLight, "Shake alert sent", "SMS to 2 contacts", "11:05")
     )
-
-    Text(
-        text = "RECENT ACTIVITY",
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        color = Gray600,
-        letterSpacing = 1.2.sp
-    )
-
+    Text("RECENT ACTIVITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gray600, letterSpacing = 1.2.sp)
     Spacer(modifier = Modifier.height(10.dp))
-
     Column {
         items.forEachIndexed { index, item ->
-            ActivityRow(item = item)
-            if (index < items.lastIndex) {
-                HorizontalDivider(
-                    color = Gray200,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(start = 56.dp)
-                )
-            }
+            ActivityRow(item)
+            if (index < items.lastIndex) HorizontalDivider(color = Gray200, thickness = 1.dp, modifier = Modifier.padding(start = 56.dp))
         }
     }
 }
 
 @Composable
 private fun ActivityRow(item: ActivityItem) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(item.iconBg),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = null,
-                tint = item.iconTint,
-                modifier = Modifier.size(22.dp)
-            )
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(item.iconBg), contentAlignment = Alignment.Center) {
+            Icon(item.icon, null, tint = item.iconTint, modifier = Modifier.size(22.dp))
         }
-
         Spacer(modifier = Modifier.width(14.dp))
-
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Gray900
-            )
-            Text(
-                text = item.subtitle,
-                fontSize = 13.sp,
-                color = Gray600
-            )
+            Text(item.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+            Text(item.subtitle, fontSize = 13.sp, color = Gray600)
         }
-
-        Text(
-            text = item.time,
-            fontSize = 12.sp,
-            color = Gray400
-        )
+        Text(item.time, fontSize = 12.sp, color = Gray400)
     }
 }
