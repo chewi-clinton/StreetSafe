@@ -89,10 +89,11 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        // Note: gps is intentionally NOT passed here.
+        // The GPS dot is driven by GPSTracker.hasValidFix in the ViewModel.
         viewModel.updateSensorStatus(
             accelerometer = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null,
             proximity     = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null,
-            gps           = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LOCATION_GPS),
             audio         = false
         )
     }
@@ -154,6 +155,8 @@ fun HomeScreen(
                     proximityActive     = state.proximityActive,
                     audioActive         = state.audioActive
                 )
+
+                // Block 3 debug Text removed — GPS test passed.
 
                 Spacer(modifier = Modifier.height(12.dp))
 

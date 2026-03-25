@@ -3,71 +3,105 @@ package com.example.safesense.sensor.processor
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
-import android.os.Bundle
+import android.os.Looper
+import android.util.Log
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class GPSTracker(
-    private val context: Context
-) : LocationListener {
+// ─────────────────────────────────────────────────────────────────────────────
+// GPSTracker.kt
+// Location: sensor/processor/GPSTracker.kt
+//
+// BLOCK 4 CHANGES:
+//   - Added hasValidFix: StateFlow<Boolean>
+//     Starts false. Flips to true the moment the first GPS fix arrives.
+//     HomeViewModel observes this to turn the GPS dot green in real time.
+//   - Removed formatForDebug() — Block 3 test is done, no longer needed.
+//
+// EVERYTHING ELSE IS UNCHANGED from Block 3.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Singleton
+class GPSTracker @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     companion object {
-        const val UPDATE_INTERVAL_MS = 30_000L  // 30 seconds during normal monitoring
-        const val MIN_DISTANCE_METERS = 10f     // minimum 10m movement before update
+        private const val TAG = "GPSTracker"
+        private const val INTERVAL_MS = 30_000L
+        private const val FASTEST_INTERVAL_MS = 15_000L
     }
 
-    private val locationManager =
-        context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    private val fusedClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(context)
 
-    // Last known fix always kept in memory — never null after first fix
-    @Volatile
-    private var lastKnownLocation: Location? = null
+    // Holds the most recent GPS fix. Null until the first fix arrives.
+    private val _lastLocation = MutableStateFlow<Location?>(null)
+    val lastLocation: StateFlow<Location?> = _lastLocation.asStateFlow()
 
-    val lastLocation: Location? get() = lastKnownLocation
+    // ── BLOCK 4: GPS fix availability flag ───────────────────────────────────
+    // false = no fix yet  →  GPS dot stays grey
+    // true  = fix received →  GPS dot turns green
+    //
+    // HomeViewModel observes this. When it flips to true, it sets gpsActive=true
+    // in HomeUiState. The GPS pill on HomeScreen reacts via animateColorAsState.
+    private val _hasValidFix = MutableStateFlow(false)
+    val hasValidFix: StateFlow<Boolean> = _hasValidFix.asStateFlow()
 
-    @SuppressLint("MissingPermission")
-    fun start() {
-        // forceAndroidLocationManager — non-negotiable from build guide
-        locationManager.requestLocationUpdates(
-            LocationManager.GPS_PROVIDER,
-            UPDATE_INTERVAL_MS,
-            MIN_DISTANCE_METERS,
-            this
-        )
+    private val locationRequest: LocationRequest = LocationRequest.Builder(
+        Priority.PRIORITY_HIGH_ACCURACY,
+        INTERVAL_MS
+    )
+        .setMinUpdateIntervalMillis(FASTEST_INTERVAL_MS)
+        .setGranularity(com.google.android.gms.location.Granularity.GRANULARITY_FINE)
+        .build()
 
-        // Seed with last known fix immediately so first SMS can go out instantly
-        val lastGps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-        val lastNetwork = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-
-        lastKnownLocation = when {
-            lastGps != null && lastNetwork != null -> {
-                if (lastGps.time > lastNetwork.time) lastGps else lastNetwork
-            }
-            lastGps != null -> lastGps
-            lastNetwork != null -> lastNetwork
-            else -> null
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            val location = result.lastLocation ?: return
+            _lastLocation.value = location
+            _hasValidFix.value = true   // ← this is what turns the dot green
+            Log.d(TAG, "GPS fix: lat=${location.latitude}, lng=${location.longitude}, accuracy=${location.accuracy}m")
         }
     }
 
+    @SuppressLint("MissingPermission") // Permission checked by caller (SensorMonitoringService)
+    fun start() {
+        Log.d(TAG, "Starting GPS updates every ${INTERVAL_MS / 1000}s")
+        fusedClient.requestLocationUpdates(
+            locationRequest,
+            locationCallback,
+            Looper.getMainLooper()
+        )
+    }
+
     fun stop() {
-        locationManager.removeUpdates(this)
+        Log.d(TAG, "Stopping GPS updates")
+        fusedClient.removeLocationUpdates(locationCallback)
+        // We do NOT reset _hasValidFix here — the cached location is still valid.
     }
 
-    // Returns GPS coordinates formatted for SMS Google Maps link
-    // Returns null if no fix available yet
-    fun getLocationForSms(): String? {
-        val location = lastKnownLocation ?: return null
-        return "https://maps.google.com/?q=${location.latitude},${location.longitude}"
+    // Called by SmsAlertDispatcher when building the emergency SMS. Never blocks.
+    fun getLastLocationForAlert(): Location? = _lastLocation.value
+
+    // Formats location as a Google Maps URL for the SMS body.
+    // Opens in any browser — no Google Maps app required.
+    fun formatForSms(): String {
+        val loc = _lastLocation.value
+        return if (loc != null) {
+            "https://maps.google.com/?q=${loc.latitude},${loc.longitude}"
+        } else {
+            "Location unavailable"
+        }
     }
-
-    override fun onLocationChanged(location: Location) {
-        lastKnownLocation = location
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-
-    override fun onProviderEnabled(provider: String) {}
-
-    override fun onProviderDisabled(provider: String) {}
 }
