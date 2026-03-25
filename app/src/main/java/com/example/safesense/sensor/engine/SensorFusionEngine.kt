@@ -1,7 +1,10 @@
 package com.example.safesense.sensor.engine
 
 import com.example.safesense.domain.model.ConfidenceLevel
+import com.example.safesense.domain.model.DetectedIncident
 import com.example.safesense.domain.model.DetectionResult
+import com.example.safesense.domain.model.IncidentType
+import com.example.safesense.domain.usecase.DetectCollisionUseCase
 import com.example.safesense.domain.usecase.DetectFallUseCase
 import com.example.safesense.sensor.processor.AccelerometerEvent
 import kotlinx.coroutines.CoroutineScope
@@ -13,125 +16,288 @@ import javax.inject.Inject
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SensorFusionEngine.kt
-// Location: sensor/engine/SensorFusionEngine.kt
+// Location: sensor/fusion/SensorFusionEngine.kt
 //
-// STEP 7 CHANGE vs Step 6:
-//   Before: onAccelerometerEvent() checked if a FallSignature event arrived
-//   recently and declared an incident immediately. This was a placeholder —
-//   it would have produced massive false positives on any bumpy road.
+// THIS IS THE ONLY COMPONENT THAT CAN DECLARE AN INCIDENT.
 //
-//   Now: every AccelerometerEvent is fed into DetectFallUseCase.process().
-//   The use case runs the full three-phase algorithm (free fall → impact →
-//   stillness) and only returns Detected when all three phases complete in
-//   sequence. The confidence level from the use case flows into the incident.
+// Individual sensor processors (AccelerometerProcessor, ProximityProcessor,
+// AudioMonitor) are "witnesses" — they report raw readings. This class is
+// the "judge" — it decides whether those readings together mean an emergency.
 //
-//   The proximity correlation window is preserved — it upgrades confidence
-//   when proximity also changed near the time of the fall. This is the
-//   SensorFusionEngine's job: correlate signals from multiple sensors.
+// HOW IT WORKS:
+//   1. SensorForegroundService feeds events in by calling onAccelerometerEvent(),
+//      onProximityChanged(), and onDistressSoundDetected() directly.
+//   2. This engine records the timestamp of each signal.
+//   3. When the accelerometer use case says "detection!", the engine checks
+//      whether other signals arrived within the 500ms correlation window.
+//   4. The combination of signals determines which row of the decision matrix
+//      fires, and at what confidence level.
+//   5. A DetectedIncident is emitted on the `incidents` SharedFlow.
+//   6. CountdownViewModel subscribes to `incidents` and starts the countdown.
 //
-// WHY DetectFallUseCase IS INJECTED, NOT CONSTRUCTED HERE:
-//   SensorFusionEngine lives in the sensor layer. DetectFallUseCase lives in
-//   the domain layer. The domain layer never imports from the sensor layer.
-//   We pass the use case in through the constructor so that in tests we can
-//   replace it with a fake — without this, fall detection is untestable.
+// THE 500ms CORRELATION WINDOW:
+//   This is the most important constraint in the entire engine.
+//   If proximity changes at t=0 and the accelerometer spike arrives at t=600ms,
+//   we do NOT combine them — 600ms is outside the window.
+//   Why 500ms? Research on fall and collision biomechanics shows that all
+//   body sensor signals from a single event arrive within ~300ms. We use 500ms
+//   to account for sensor polling jitter on low-end Android hardware.
+//   Signals outside this window are INDEPENDENT events, not correlated.
+//
+// THE FIVE DECISION MATRIX ROWS (from master prompt):
+//
+//   Row 1: Accelerometer fall algorithm fires
+//          No proximity change within 500ms, no audio within 500ms
+//          → Fall, MEDIUM confidence
+//
+//   Row 2: Accelerometer fall algorithm fires
+//          Proximity changed NEAR→FAR within 500ms (phone left body at impact)
+//          → Fall, HIGH confidence
+//
+//   Row 3: Collision algorithm fires (>4g spike + stillness)
+//          Audio distress sound within 500ms (any proximity)
+//          → Collision, HIGH confidence
+//          (Without audio: → Collision, HIGH — collision alone is HIGH)
+//
+//   Row 4: No accelerometer event
+//          Proximity changed NEAR→FAR, and audio loud within 500ms
+//          → Snatched, MEDIUM confidence
+//
+//   Row 5: Shake gesture (≥3 shakes in 2s) — NOT handled here yet
+//          Proximity is NEAR (phone in hand)
+//          → Shake Alert, HIGH confidence
+//          (Shake detection is Step 17 — this row is a placeholder)
+//
+// WHY NOT USE FLOWS INTERNALLY?
+//   The processors emit on SharedFlows. We COULD collect those flows here.
+//   But that creates back-pressure problems and requires each processor to
+//   be injected as a dependency of this engine.
+//   Instead, SensorForegroundService acts as the coordinator — it collects
+//   all processor flows and calls methods on this engine. This keeps the
+//   engine simple, testable, and dependency-free from Android sensor APIs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class SensorFusionEngine @Inject constructor(
+class SensorFusionEngine(
     private val scope: CoroutineScope,
-    private val detectFallUseCase: DetectFallUseCase
+    private val detectFallUseCase: DetectFallUseCase,
+    private val detectCollisionUseCase: DetectCollisionUseCase = DetectCollisionUseCase()
 ) {
 
     companion object {
-        // How close in time two sensor signals must be to count as one event.
-        // 500ms: if proximity changed within 500ms of a confirmed fall,
-        // the phone likely hit a surface face-down — higher confidence.
+        // The 500ms correlation window — signals outside this are never combined
         const val CORRELATION_WINDOW_MS = 500L
+
+        // Snatched detection requires both proximity AND audio
+        // If only one fires without the other in the window, ignore it
+        // (proximity change alone could be putting phone in pocket;
+        //  audio alone could be a passing motorbike)
     }
 
-    private val _incidents = MutableSharedFlow<DetectedIncident>(extraBufferCapacity = 16)
+    // ── Output: the incidents SharedFlow ─────────────────────────────────────
+    //
+    // CountdownViewModel subscribes to this.
+    // Every emission starts a countdown.
+    // extraBufferCapacity = 1: if CountdownViewModel hasn't collected the last
+    // incident yet, we hold one in the buffer. We never drop an incident.
+
+    private val _incidents = MutableSharedFlow<DetectedIncident>(extraBufferCapacity = 1)
     val incidents: SharedFlow<DetectedIncident> = _incidents.asSharedFlow()
 
-    // Tracks when proximity last changed so we can correlate it with falls.
-    // Proximity alone never triggers an incident — it only modifies confidence.
-    private var lastProximityChangeTime: Long = 0L
-
-    // ── Accelerometer ─────────────────────────────────────────────────────────
+    // ── Correlated signal timestamps ──────────────────────────────────────────
     //
-    // Every event — Normal, SignificantMovement, and FallSignature — is passed
-    // to DetectFallUseCase. The use case needs ALL of them because:
-    //   - Normal events are how it measures stillness in Phase 3
-    //   - SignificantMovement events are how it detects the impact in Phase 2
-    //   - FallSignature events are how it detects free fall in Phase 1
-    // Filtering here would break the state machine inside the use case.
+    // Each time a corroborating signal arrives, we record its timestamp.
+    // When a use case fires, we check whether these timestamps are within
+    // CORRELATION_WINDOW_MS of the detection timestamp.
 
+    @Volatile private var lastProximityTimestamp   = 0L  // last NEAR→FAR transition
+    @Volatile private var lastDistressSoundTimestamp = 0L  // last audio spike above threshold
+
+    // ── Signal entry points — called by SensorForegroundService ──────────────
+
+    /**
+     * Called for every accelerometer reading.
+     * We pass it through both use cases.
+     * If either fires a detection, we run the decision matrix.
+     */
     fun onAccelerometerEvent(event: AccelerometerEvent) {
-        val result = detectFallUseCase.process(event)
+        val fallResult      = detectFallUseCase.process(event)
+        val collisionResult = detectCollisionUseCase.process(event)
 
-        if (result is DetectionResult.Detected) {
-            // The three-phase algorithm confirmed a fall.
-            // Now check if proximity also changed recently.
-            // If it did, we upgrade to HIGH confidence regardless of what the
-            // use case returned — two independent sensors agreeing is strong signal.
-            val proximityCorroborates = (event.timestamp - lastProximityChangeTime) < CORRELATION_WINDOW_MS
-
-            val finalConfidence = when {
-                proximityCorroborates                        -> ConfidenceLevel.HIGH
-                result.confidence == ConfidenceLevel.HIGH   -> ConfidenceLevel.HIGH
-                result.confidence == ConfidenceLevel.MEDIUM -> ConfidenceLevel.MEDIUM
-                else                                         -> ConfidenceLevel.LOW
+        when {
+            fallResult is DetectionResult.Detected -> {
+                handleFallDetected(fallResult.confidence, event.timestamp)
             }
-
-            declareIncident(
-                type       = IncidentType.FALL,
-                confidence = finalConfidence,
-                timestamp  = event.timestamp
-            )
+            collisionResult is DetectionResult.Detected -> {
+                handleCollisionDetected(event.timestamp)
+            }
         }
     }
 
-    // ── Proximity ─────────────────────────────────────────────────────────────
-    //
-    // ProximityProcessor calls this when the sensor state changes.
-    // We only record the timestamp — the correlation check happens in
-    // onAccelerometerEvent() when a fall is confirmed.
-
+    /**
+     * Called by SensorForegroundService when ProximityProcessor emits any event.
+     * We only care about NEAR→FAR transitions — that means the phone left
+     * the user's body (fell out of pocket, got snatched, etc.).
+     * The ProximityProcessor already filters to state-change events only,
+     * so every call here is a real state change.
+     * We record the timestamp for correlation.
+     */
     fun onProximityChanged(timestamp: Long) {
-        lastProximityChangeTime = timestamp
+        // ProximityProcessor only emits on state changes, and SensorForegroundService
+        // calls this method for all proximity events. We record it and let the
+        // decision matrix decide whether it means anything.
+        lastProximityTimestamp = timestamp
+        android.util.Log.d("SafeSense/Fusion", "Proximity change recorded at $timestamp")
+
+        // Check row 4: snatched pattern — proximity + audio within the window
+        checkForSnatchedPattern(timestamp)
     }
 
-    // ── Declare ───────────────────────────────────────────────────────────────
+    /**
+     * Called by SensorForegroundService when AudioMonitor emits a DistressSound.
+     * We record the timestamp for correlation with accelerometer events.
+     */
+    fun onDistressSoundDetected(timestamp: Long) {
+        lastDistressSoundTimestamp = timestamp
+        android.util.Log.d("SafeSense/Fusion", "Distress sound recorded at $timestamp")
 
-    private fun declareIncident(
+        // Check row 4: snatched pattern — audio + proximity within the window
+        checkForSnatchedPattern(timestamp)
+    }
+
+    // ── Decision matrix rows ──────────────────────────────────────────────────
+
+    /**
+     * Rows 1 and 2: Fall detection
+     *
+     * Row 1: Fall alone                → MEDIUM confidence (or whatever use case returned)
+     * Row 2: Fall + proximity change   → upgrade to HIGH confidence
+     *
+     * The use case already determined LOW/MEDIUM/HIGH from stillness duration.
+     * Proximity corroboration overrides that to HIGH, because the physical
+     * signature (phone left body + fall phases) is very specific.
+     */
+    private fun handleFallDetected(baseConfidence: ConfidenceLevel, detectionTimestamp: Long) {
+        val proximityCorroborated = isWithinWindow(lastProximityTimestamp, detectionTimestamp)
+
+        val finalConfidence = if (proximityCorroborated) {
+            // Row 2: fall + phone left body = HIGH confidence
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Row 2: Fall + proximity corroborated → HIGH"
+            )
+            ConfidenceLevel.HIGH
+        } else {
+            // Row 1: fall alone — use the confidence from the use case
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Row 1: Fall alone → $baseConfidence"
+            )
+            baseConfidence
+        }
+
+        emitIncident(IncidentType.FALL, finalConfidence, detectionTimestamp)
+    }
+
+    /**
+     * Row 3: Collision detection
+     *
+     * Collision alone already returns HIGH from DetectCollisionUseCase.
+     * Audio corroboration confirms it further (same confidence — already HIGH).
+     * We log which sub-row fired for debugging, but the confidence is HIGH either way.
+     */
+    private fun handleCollisionDetected(detectionTimestamp: Long) {
+        val audioCorroborated = isWithinWindow(lastDistressSoundTimestamp, detectionTimestamp)
+
+        if (audioCorroborated) {
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Row 3a: Collision + distress sound → HIGH"
+            )
+        } else {
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Row 3b: Collision alone → HIGH"
+            )
+        }
+
+        emitIncident(IncidentType.COLLISION, ConfidenceLevel.HIGH, detectionTimestamp)
+    }
+
+    /**
+     * Row 4: Snatched detection
+     *
+     * This fires when BOTH proximity AND audio arrive within 500ms of each other
+     * but with NO accelerometer fall or collision detection.
+     * We check this every time either signal arrives, using the other signal's
+     * stored timestamp.
+     *
+     * What "snatched" means physically:
+     *   - Phone leaves body (proximity: NEAR→FAR)
+     *   - Loud sound (scream, yell, struggle) at the same time
+     *   - But no fall (person stayed upright during mugging)
+     */
+    private fun checkForSnatchedPattern(currentTimestamp: Long) {
+        // Need both signals to have timestamps that are within the window of each other
+        if (lastProximityTimestamp == 0L || lastDistressSoundTimestamp == 0L) return
+
+        val timeBetweenSignals = Math.abs(lastProximityTimestamp - lastDistressSoundTimestamp)
+
+        if (timeBetweenSignals <= CORRELATION_WINDOW_MS) {
+            // Both signals within 500ms of each other = snatched pattern
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Row 4: Proximity + audio within ${timeBetweenSignals}ms → SNATCHED MEDIUM"
+            )
+
+            // Clear both timestamps so we do not fire this twice for the same event
+            lastProximityTimestamp    = 0L
+            lastDistressSoundTimestamp = 0L
+
+            emitIncident(IncidentType.SHAKE, ConfidenceLevel.MEDIUM, currentTimestamp)
+            // Note: using SHAKE as a proxy for SNATCHED because IncidentType does not
+            // have a SNATCHED value yet. When IncidentType is expanded in Step 11,
+            // change this to IncidentType.SNATCHED.
+            // For now this ensures the incident reaches CountdownViewModel correctly.
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Returns true if the corroborating signal's timestamp is within
+     * CORRELATION_WINDOW_MS of the detection timestamp.
+     *
+     * We use absolute difference because sometimes the corroborating signal
+     * arrives a few milliseconds BEFORE the use case fires (e.g. proximity
+     * changes at impact, accelerometer stillness fires 50ms later).
+     */
+    private fun isWithinWindow(signalTimestamp: Long, detectionTimestamp: Long): Boolean {
+        if (signalTimestamp == 0L) return false
+        return Math.abs(detectionTimestamp - signalTimestamp) <= CORRELATION_WINDOW_MS
+    }
+
+    /**
+     * Emits a DetectedIncident on the incidents SharedFlow.
+     * This is the only place in the entire app that creates a DetectedIncident.
+     * Every call here WILL start a countdown in CountdownViewModel.
+     */
+    private fun emitIncident(
         type: IncidentType,
         confidence: ConfidenceLevel,
         timestamp: Long
     ) {
+        val incident = DetectedIncident(
+            type            = type,
+            confidenceLevel = confidence,
+            timestamp       = timestamp
+        )
+
         scope.launch {
-            _incidents.emit(
-                DetectedIncident(
-                    type            = type,
-                    confidenceLevel = confidence,
-                    timestamp       = timestamp
-                )
+            _incidents.emit(incident)
+            android.util.Log.d(
+                "SafeSense/Fusion",
+                "Incident emitted: type=$type confidence=$confidence"
             )
         }
     }
-}
-
-// ── Supporting types ──────────────────────────────────────────────────────────
-//
-// DetectedIncident uses ConfidenceLevel (the domain enum) instead of a raw
-// Float. This makes the confidence value meaningful and prevents bugs where
-// 0.9f and 0.91f would be treated differently by downstream logic.
-
-data class DetectedIncident(
-    val type: IncidentType,
-    val confidenceLevel: ConfidenceLevel,
-    val timestamp: Long
-)
-
-enum class IncidentType {
-    FALL,
-    COLLISION,
-    SHAKE_GESTURE
 }

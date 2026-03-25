@@ -2,7 +2,7 @@ package com.example.safesense.presentation.countdown
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.safesense.sensor.engine.IncidentType
+import com.example.safesense.domain.model.IncidentType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow

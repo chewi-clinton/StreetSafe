@@ -1,6 +1,6 @@
 package com.example.safesense.presentation.countdown
 
-import com.example.safesense.sensor.engine.IncidentType
+import com.example.safesense.domain.model.IncidentType
 
 sealed class CountdownState {
 

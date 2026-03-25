@@ -4,10 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -56,7 +52,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,7 +70,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import kotlin.math.sqrt
 
 private val PrimaryRed = Color(0xFFD32F2F)
 private val White = Color(0xFFFFFFFF)
@@ -84,9 +78,6 @@ private val Gray200 = Color(0xFFEEEEEE)
 private val Gray400 = Color(0xFFBDBDBD)
 private val Gray600 = Color(0xFF757575)
 private val Gray900 = Color(0xFF212121)
-
-private const val SHAKE_THRESHOLD_G = 2.0f
-private const val SHAKE_WINDOW_MS = 2000L
 
 @Composable
 fun SettingsScreen(
@@ -101,15 +92,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showPermDeniedDialog by remember { mutableStateOf(false) }
-
-    ShakeDetector(
-        enabled = uiState.shakeToAlertEnabled,
-        requiredShakeCount = 3,
-        onShakeTriggered = {
-            vibrateDevice(context)
-            onNavigateToCountdown()
-        }
-    )
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -231,68 +213,6 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::onAutoStartOnRebootChange
             )
             Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun ShakeDetector(
-    enabled: Boolean,
-    requiredShakeCount: Int,
-    onShakeTriggered: () -> Unit
-) {
-    val context = LocalContext.current
-
-    DisposableEffect(enabled) {
-        if (!enabled) return@DisposableEffect onDispose {}
-
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-        var shakeCount = 0
-        var firstShakeTime = 0L
-        var lastShakeTime = 0L
-        var triggered = false
-
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                if (triggered) return
-
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
-                val gForce = sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
-
-                if (gForce < SHAKE_THRESHOLD_G) return
-
-                val now = System.currentTimeMillis()
-                if (now - lastShakeTime < 300) return
-                lastShakeTime = now
-
-                if (shakeCount == 0) {
-                    firstShakeTime = now
-                    shakeCount = 1
-                } else if (now - firstShakeTime <= SHAKE_WINDOW_MS) {
-                    shakeCount++
-                    if (shakeCount >= requiredShakeCount) {
-                        triggered = true
-                        onShakeTriggered()
-                    }
-                } else {
-                    firstShakeTime = now
-                    shakeCount = 1
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-
-        accelerometer?.let {
-            sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-
-        onDispose {
-            sensorManager.unregisterListener(listener)
         }
     }
 }
