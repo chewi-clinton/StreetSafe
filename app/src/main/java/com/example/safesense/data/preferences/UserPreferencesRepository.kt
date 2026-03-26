@@ -18,6 +18,10 @@ class UserPreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    val userName: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[UserPreferences.USER_NAME] ?: ""
+    }
+
     val sensitivity: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[UserPreferences.SENSITIVITY] ?: 0.5f
     }
@@ -40,6 +44,12 @@ class UserPreferencesRepository @Inject constructor(
 
     val autoStartOnReboot: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[UserPreferences.AUTO_START_ON_REBOOT] ?: true
+    }
+
+    suspend fun setUserName(name: String) {
+        context.dataStore.edit { prefs ->
+            prefs[UserPreferences.USER_NAME] = name
+        }
     }
 
     suspend fun setSensitivity(value: Float) {

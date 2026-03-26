@@ -1,7 +1,12 @@
 package com.example.safesense.domain.model
 
-data class AlertResult(
-    val contactName: String,
-    val isSuccess: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
-)
+sealed class AlertResult {
+    data class Success(
+        val contactsNotified: Int,
+        val timestamp: Long
+    ) : AlertResult()
+
+    data class Failure(
+        val reason: String
+    ) : AlertResult()
+}

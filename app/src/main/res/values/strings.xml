@@ -1,3 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FILE: res/values/strings.xml
+    LANGUAGE: English (default)
+
+    INSTRUCTIONS:
+    Add the lines inside <resources> to your existing strings.xml file.
+    If you do not have a strings.xml yet, use this entire file as-is.
+
+    These string names match exactly what AlertMessageBuilder uses.
+    Do NOT rename them — the names are the contract between the XML and the code.
+-->
 <resources>
+
+    <!-- App name -->
     <string name="app_name">SafeSense</string>
+
+    <!-- IncidentType display labels — English -->
+    <!-- Used in the incident history screen and SMS message builder -->
+    <string name="incident_type_fall">Fall Detected</string>
+    <string name="incident_type_collision">Collision Detected</string>
+    <string name="incident_type_shake">Distress Signal</string>
+    <string name="incident_type_manual">Manual Alert</string>
+
 </resources>

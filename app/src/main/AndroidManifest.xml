@@ -57,10 +57,20 @@
 
         <receiver
             android:name=".sensor.BootReceiver"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".sensor.alert.SmsDeliveryReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.safesense.SMS_SENT" />
+                <action android:name="com.example.safesense.SMS_DELIVERED" />
             </intent-filter>
         </receiver>
 

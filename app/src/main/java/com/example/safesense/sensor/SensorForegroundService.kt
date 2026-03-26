@@ -18,6 +18,7 @@ import com.example.safesense.data.preferences.UserPreferences
 import com.example.safesense.domain.model.DetectedIncident
 import com.example.safesense.domain.usecase.DetectCollisionUseCase
 import com.example.safesense.domain.usecase.DetectFallUseCase
+import com.example.safesense.domain.usecase.RecognizeShakeGestureUseCase
 import com.example.safesense.sensor.engine.SensorFusionEngine
 import com.example.safesense.sensor.processor.AccelerometerProcessor
 import com.example.safesense.sensor.processor.AudioEvent
@@ -122,12 +123,12 @@ class SensorForegroundService : Service() {
     @Inject lateinit var dataStore: DataStore<Preferences>
     @Inject lateinit var detectFallUseCase: DetectFallUseCase
     @Inject lateinit var detectCollisionUseCase: DetectCollisionUseCase
+    @Inject lateinit var recognizeShakeGestureUseCase: RecognizeShakeGestureUseCase
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         sensorManager          = getSystemService(SENSOR_SERVICE) as SensorManager
-        // Step 9: DetectCollisionUseCase is now injected and wired in
         fusionEngine           = SensorFusionEngine(serviceScope, detectFallUseCase, detectCollisionUseCase)
         accelerometerProcessor = AccelerometerProcessor(sensorManager)
         proximityProcessor     = ProximityProcessor(sensorManager)
@@ -173,6 +174,7 @@ class SensorForegroundService : Service() {
         collectAccelerometerEvents()
         collectProximityEvents()
         collectAudioEvents()
+        collectShakeEvents()
         collectIncidents()
         scheduleHeartbeat()
 
@@ -232,7 +234,12 @@ class SensorForegroundService : Service() {
     private fun collectProximityEvents() {
         serviceScope.launch {
             proximityProcessor.proximityEvents.collect { event ->
-                fusionEngine.onProximityChanged(event.timestamp)
+                // Pass both timestamp and whether the phone is NEAR (in hand/pocket)
+                // SensorFusionEngine needs isNear to correctly implement Row 5
+                fusionEngine.onProximityChanged(
+                    timestamp = event.timestamp,
+                    isNear    = event.state == com.example.safesense.sensor.processor.ProximityState.NEAR
+                )
             }
         }
     }
@@ -242,6 +249,21 @@ class SensorForegroundService : Service() {
             audioMonitor.audioEvents.collect { event ->
                 if (event is AudioEvent.DistressSound) {
                     fusionEngine.onDistressSoundDetected(event.timestamp)
+                }
+            }
+        }
+    }
+
+    private fun collectShakeEvents() {
+        // We reuse the accelerometer event stream — RecognizeShakeGestureUseCase
+        // processes every reading and returns Detected only when ≥3 jerk spikes
+        // occur within 2 seconds. When it fires, we forward to the fusion engine
+        // which applies the Row 5 check (shake + NEAR proximity → SHAKE HIGH).
+        serviceScope.launch {
+            accelerometerProcessor.accelerometerEvents.collect { event ->
+                val result = recognizeShakeGestureUseCase.process(event)
+                if (result is com.example.safesense.domain.model.DetectionResult.Detected) {
+                    fusionEngine.onShakeEvent(event.timestamp)
                 }
             }
         }
@@ -303,7 +325,7 @@ class SensorForegroundService : Service() {
      */
     private fun scheduleHeartbeat() {
         val heartbeatRequest = PeriodicWorkRequestBuilder<SensorHeartbeatWorker>(
-            3, TimeUnit.MINUTES
+            15, TimeUnit.MINUTES
         ).build()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(

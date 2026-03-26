@@ -91,6 +91,9 @@ class SensorFusionEngine(
         // If only one fires without the other in the window, ignore it
         // (proximity change alone could be putting phone in pocket;
         //  audio alone could be a passing motorbike)
+
+        const val SHAKE_WINDOW_MS = 2000L  // all shakes must occur within this window
+        const val SHAKE_MIN_COUNT = 3      // minimum shakes in the window to qualify
     }
 
     // ── Output: the incidents SharedFlow ─────────────────────────────────────
@@ -109,8 +112,23 @@ class SensorFusionEngine(
     // When a use case fires, we check whether these timestamps are within
     // CORRELATION_WINDOW_MS of the detection timestamp.
 
-    @Volatile private var lastProximityTimestamp   = 0L  // last NEAR→FAR transition
+    @Volatile private var lastProximityTimestamp    = 0L  // last NEAR→FAR transition
     @Volatile private var lastDistressSoundTimestamp = 0L  // last audio spike above threshold
+
+    // ── Row 5 shake tracking ──────────────────────────────────────────────────
+    //
+    // We keep a rolling list of shake timestamps. Every call to onShakeEvent()
+    // appends the current timestamp and drops any entries older than 2 seconds.
+    // When the list reaches 3 entries AND proximity is NEAR (phone is in hand),
+    // Row 5 fires: Shake Alert at HIGH confidence.
+    //
+    // Note: the shake gesture algorithm itself (jerk calculation) lives in
+    // RecognizeShakeGestureUseCase — that is Step 17. For now, onShakeEvent()
+    // is a stub entry point so the wiring is correct. When Step 17 is done,
+    // SensorForegroundService calls this method instead of calling the use case
+    // directly, and Row 5 will fire automatically.
+    private val shakeTimestamps = ArrayDeque<Long>()
+    private var proximityIsNear = false  // true when last proximity state was NEAR
 
     // ── Signal entry points — called by SensorForegroundService ──────────────
 
@@ -141,15 +159,13 @@ class SensorFusionEngine(
      * so every call here is a real state change.
      * We record the timestamp for correlation.
      */
-    fun onProximityChanged(timestamp: Long) {
-        // ProximityProcessor only emits on state changes, and SensorForegroundService
-        // calls this method for all proximity events. We record it and let the
-        // decision matrix decide whether it means anything.
+    fun onProximityChanged(timestamp: Long, isNear: Boolean) {
         lastProximityTimestamp = timestamp
-        android.util.Log.d("SafeSense/Fusion", "Proximity change recorded at $timestamp")
+        proximityIsNear = isNear
+        android.util.Log.d("SafeSense/Fusion", "Proximity change: isNear=$isNear at $timestamp")
 
-        // Check row 4: snatched pattern — proximity + audio within the window
-        checkForSnatchedPattern(timestamp)
+        // Check row 4: snatched pattern — proximity NEAR→FAR + audio within the window
+        if (!isNear) checkForSnatchedPattern(timestamp)
     }
 
     /**
@@ -162,6 +178,38 @@ class SensorFusionEngine(
 
         // Check row 4: snatched pattern — audio + proximity within the window
         checkForSnatchedPattern(timestamp)
+    }
+
+    /**
+     * Row 5: Called by SensorForegroundService when RecognizeShakeGestureUseCase
+     * detects a single shake event (Step 17 will wire this).
+     *
+     * We maintain a rolling 2-second window of shake timestamps.
+     * When ≥3 shakes occur within that window AND proximity is NEAR
+     * (phone is in the user's hand), we emit a Shake Alert at HIGH confidence.
+     *
+     * Why NEAR and not FAR? The user is deliberately shaking their phone
+     * as a distress gesture. If the phone is not in their hand (FAR),
+     * the shaking is more likely a bag or vehicle vibration — ignore it.
+     */
+    fun onShakeEvent(timestamp: Long) {
+        // Add this shake and purge any timestamps outside the 2-second window
+        shakeTimestamps.addLast(timestamp)
+        while (shakeTimestamps.isNotEmpty() &&
+            timestamp - shakeTimestamps.first() > SHAKE_WINDOW_MS) {
+            shakeTimestamps.removeFirst()
+        }
+
+        android.util.Log.d(
+            "SafeSense/Fusion",
+            "Shake event: ${shakeTimestamps.size} shakes in last ${SHAKE_WINDOW_MS}ms, proximityNear=$proximityIsNear"
+        )
+
+        if (shakeTimestamps.size >= SHAKE_MIN_COUNT && proximityIsNear) {
+            android.util.Log.d("SafeSense/Fusion", "Row 5: ≥3 shakes + NEAR → SHAKE HIGH")
+            shakeTimestamps.clear()  // prevent double-firing
+            emitIncident(IncidentType.SHAKE, ConfidenceLevel.HIGH, timestamp)
+        }
     }
 
     // ── Decision matrix rows ──────────────────────────────────────────────────

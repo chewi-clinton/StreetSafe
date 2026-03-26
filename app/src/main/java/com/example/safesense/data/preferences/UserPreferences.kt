@@ -35,6 +35,9 @@ object UserPreferences {
     // accelerometer reading. Read by SensorHeartbeatWorker to detect silent kills.
     val LAST_ACCELEROMETER_TIMESTAMP = longPreferencesKey("last_accelerometer_timestamp")
 
+    // ── User Identity ─────────────────────────────────────────────────────────
+    val USER_NAME                      = stringPreferencesKey("user_name")
+
     // ── Existing keys — unchanged ─────────────────────────────────────────────
     val SENSITIVITY                    = floatPreferencesKey("sensitivity")
     val SHAKE_TO_ALERT_ENABLED         = booleanPreferencesKey("shake_to_alert_enabled")

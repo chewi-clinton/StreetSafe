@@ -90,9 +90,12 @@ class SensorHeartbeatWorker @AssistedInject constructor(
         const val HEARTBEAT_CHANNEL_ID    = "safesense_heartbeat_channel"
         const val HEARTBEAT_NOTIFICATION_ID = 2  // must be different from the service's ID (1)
 
-        // 5 minutes in milliseconds
-        // Timestamp older than this = service is dead
-        const val STALENESS_THRESHOLD_MS = 5 * 60 * 1000L
+        // 20 minutes in milliseconds.
+        // Worker runs every 15 minutes (WorkManager's enforced minimum).
+        // Threshold must be GREATER than the interval — 20 min gives a 5-minute
+        // grace window above the 15-minute run interval, so a healthy service
+        // never triggers a false alarm even with WorkManager scheduling jitter.
+        const val STALENESS_THRESHOLD_MS = 20 * 60 * 1000L
     }
 
     override suspend fun doWork(): Result {

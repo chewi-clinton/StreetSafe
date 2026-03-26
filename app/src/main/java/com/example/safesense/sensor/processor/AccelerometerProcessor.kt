@@ -31,12 +31,30 @@ class AccelerometerProcessor(
 
     private var isHighFrequency = false
 
+    // FIX 3: Tracks the moment the sensor first saw a "calm" reading while in
+    // high-frequency mode. We only switch back to slow mode after this has
+    // been calm for HYSTERESIS_DURATION_MS (3 seconds) continuously.
+    // null means we are NOT currently in a calm-down period.
+    private var calmSinceTimestamp: Long? = null
+
     companion object {
-        // Sampling rates in microseconds
-        // Normal: ~50Hz (20ms) - Good for battery while walking
-        // High: ~100Hz (10ms) - Needed for accurate impact detection
-        private const val SLOW_SAMPLING_RATE   = 60_000
-        private const val FAST_SAMPLING_RATE   = 10_000
+        // FIX 1 & 2: Use SensorManager constants instead of raw microsecond values.
+        //
+        // SENSOR_DELAY_NORMAL  ≈ 200ms between readings = ~5Hz
+        //   → Good for idle monitoring. Very battery-friendly.
+        //   → The OLD value (60_000 µs = 60ms ≈ 17Hz) was much faster than needed
+        //     and wasted battery during normal carry.
+        //
+        // SENSOR_DELAY_FASTEST ≈ 20ms between readings = ~50Hz
+        //   → Maximum speed the hardware can deliver. Used during potential fall/impact.
+        //   → The OLD value (10_000 µs = 10ms = 100Hz) asked for more than the
+        //     hardware can actually deliver and is not a standard constant.
+        private const val SLOW_SAMPLING_RATE = SensorManager.SENSOR_DELAY_NORMAL
+        private const val FAST_SAMPLING_RATE = SensorManager.SENSOR_DELAY_FASTEST
+
+        // FIX 3: How long (in milliseconds) the sensor must stay calm before we
+        // allow the switch back to slow mode. Prevents rapid toggling.
+        private const val HYSTERESIS_DURATION_MS = 3_000L
     }
 
     fun start() {
@@ -50,6 +68,7 @@ class AccelerometerProcessor(
         sensorManager.unregisterListener(this)
         _isActive.value = false
         isHighFrequency = false
+        calmSinceTimestamp = null  // Reset hysteresis state on stop
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -59,29 +78,44 @@ class AccelerometerProcessor(
         val y = event.values[1]
         val z = event.values[2]
 
-        // Calculate magnitude: sqrt(x^2 + y^2 + z^2)
         val magnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
         val timestamp = System.currentTimeMillis()
 
         val accelEvent = when {
-            // Free-fall threshold (usually < 3.0 m/s^2)
+            // Free-fall signature: magnitude drops very low (< 4 m/s²)
             magnitude < 4.0f -> {
+                calmSinceTimestamp = null  // This is NOT calm — it is a fall signal
                 if (!isHighFrequency) switchToHighFrequency()
                 AccelerometerEvent.FallSignature(magnitude, timestamp)
             }
 
-            // Significant movement (potential start of a fall or impact)
+            // Impact / significant movement: magnitude spikes high (> 15 m/s²)
             magnitude > 15.0f -> {
+                calmSinceTimestamp = null  // This is NOT calm — it is a movement signal
                 if (!isHighFrequency) switchToHighFrequency()
                 AccelerometerEvent.SignificantMovement(magnitude, timestamp)
             }
 
-            // Normal movement
+            // Everything else is "normal" range
             else -> {
-                // If we were in high frequency but things calmed down, switch back
-                if (isHighFrequency && magnitude > 7.0f && magnitude < 12.0f) {
-                    switchToNormalFrequency()
+                // FIX 3: Only consider switching back to slow mode if we are
+                // currently in high-frequency mode.
+                if (isHighFrequency) {
+                    // Start the calm timer the first time we see a normal reading
+                    if (calmSinceTimestamp == null) {
+                        calmSinceTimestamp = timestamp
+                    }
+
+                    // Check if we have been calm for the full 3-second window
+                    val calmDuration = timestamp - (calmSinceTimestamp ?: timestamp)
+                    if (calmDuration >= HYSTERESIS_DURATION_MS) {
+                        switchToNormalFrequency()
+                        calmSinceTimestamp = null  // Reset after the switch
+                    }
+                    // If calm duration has NOT reached 3 seconds yet, we do nothing —
+                    // we stay in high-frequency mode and wait.
                 }
+
                 AccelerometerEvent.Normal(magnitude, timestamp)
             }
         }
@@ -112,7 +146,7 @@ sealed class AccelerometerEvent {
     abstract val magnitude: Float
     abstract val timestamp: Long
 
-    data class Normal(override val magnitude: Float, override val timestamp: Long)             : AccelerometerEvent()
+    data class Normal(override val magnitude: Float, override val timestamp: Long)              : AccelerometerEvent()
     data class SignificantMovement(override val magnitude: Float, override val timestamp: Long) : AccelerometerEvent()
     data class FallSignature(override val magnitude: Float, override val timestamp: Long)       : AccelerometerEvent()
 }
