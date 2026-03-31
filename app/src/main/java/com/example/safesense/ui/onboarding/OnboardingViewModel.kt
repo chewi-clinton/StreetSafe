@@ -5,12 +5,9 @@ import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.Build
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.safesense.data.preferences.UserPreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,12 +53,8 @@ data class OnboardingUiState(
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     application: Application,
-    private val dataStore: DataStore<Preferences>
+    private val userPreferencesRepository: UserPreferencesRepository
 ) : AndroidViewModel(application) {
-
-    companion object {
-        val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
-    }
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
@@ -146,9 +139,7 @@ class OnboardingViewModel @Inject constructor(
 
     private fun completeOnboarding() {
         viewModelScope.launch {
-            dataStore.edit { preferences ->
-                preferences[ONBOARDING_COMPLETE_KEY] = true
-            }
+            userPreferencesRepository.setOnboardingComplete(true)
             _uiState.value = _uiState.value.copy(isComplete = true)
         }
     }

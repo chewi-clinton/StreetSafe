@@ -34,15 +34,25 @@ import javax.inject.Inject
 //   The wider tolerance (±2.0 vs ±1.5 for falls) also accounts for the
 //   phone settling at an angle inside a crumpled vehicle.
 //
-// CONFIDENCE
-//   The collision use case always returns HIGH confidence when both phases
-//   complete. Collision + stillness is a very specific signature.
-//   SensorFusionEngine can upgrade to HIGH further if audio also matches.
+// AUDIT FIX — CONFIDENCE LEVEL:
+//   OLD: Always returned ConfidenceLevel.HIGH
+//   PROBLEM: The FusionEngine decision matrix says collision should be HIGH
+//       only when corroborated by GPS speed > 10km/h or loud audio. Without
+//       corroboration, returning HIGH bypasses the fusion logic and may
+//       cause false alerts from non-collision high-g events (e.g., phone
+//       dropped on hard surface inside a moving vehicle).
+//   FIX: Returns MEDIUM confidence. The FusionEngine upgrades to HIGH when:
+//       - GPS speed > 10 km/h is available (vehicle was moving)
+//       - Loud audio corroborates the impact (metal-on-metal crash sound)
+//       IMPORTANT: MEDIUM confidence STILL triggers the countdown. The user
+//       is still protected. The confidence level affects display only.
 //
-// AUDIO UPGRADE (handled in SensorFusionEngine, not here)
-//   Row 3 of the decision matrix: >4g spike + any proximity + loud sound → Collision HIGH
-//   This use case just handles the accelerometer side of that row.
-//   SensorFusionEngine combines the result with the audio signal.
+//   WHY IS THIS SAFE?
+//   - MEDIUM confidence triggers the countdown exactly like HIGH does
+//   - The user can still cancel during countdown if it's a false positive
+//   - HIGH confidence would skip the countdown in some designs — we don't
+//     do that in SafeSense, but returning correct confidence keeps the
+//     architecture honest for future changes
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DetectCollisionUseCase @Inject constructor() {
@@ -60,6 +70,9 @@ class DetectCollisionUseCase @Inject constructor() {
 
         // How long to wait for stillness after the spike before giving up
         const val POST_IMPACT_TIMEOUT_MS         = 8000L
+
+        // GPS speed threshold for confidence upgrade (used by FusionEngine, not here)
+        const val GPS_SPEED_UPGRADE_THRESHOLD_KMH = 10.0f
     }
 
     private enum class CollisionPhase {
@@ -74,7 +87,9 @@ class DetectCollisionUseCase @Inject constructor() {
     // ── Main entry point ──────────────────────────────────────────────────────
     //
     // Called by SensorFusionEngine on every AccelerometerEvent.
-    // Returns DetectionResult.Detected(HIGH) when both phases complete.
+    // Returns DetectionResult.Detected(MEDIUM) when both phases complete.
+    // The FusionEngine is responsible for upgrading to HIGH confidence
+    // when GPS speed or audio corroboration is available.
     // Returns DetectionResult.NotDetected otherwise.
 
     fun process(event: AccelerometerEvent): DetectionResult {
@@ -124,7 +139,13 @@ class DetectCollisionUseCase @Inject constructor() {
                     "Phase 2 confirmed — ${stillnessDuration}ms stillness after spike"
                 )
                 reset()
-                return DetectionResult.Detected(ConfidenceLevel.HIGH)
+
+                // ── FIX: Return MEDIUM instead of HIGH ──
+                // The FusionEngine upgrades to HIGH when:
+                //   1. GPS speed > 10 km/h (vehicle was moving — not a dropped phone)
+                //   2. Loud audio corroborates (crash sound detected)
+                // MEDIUM confidence still triggers the countdown — user is protected.
+                return DetectionResult.Detected(ConfidenceLevel.MEDIUM)
             }
         } else {
             // Movement broke the stillness — reset stillness timer but stay in phase 2

@@ -21,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.safesense.domain.model.Incident
 import com.example.safesense.domain.model.AlertStatus
+import com.example.safesense.domain.model.IncidentType
 import com.example.safesense.ui.components.SafeSenseBottomNavBar
 import java.text.SimpleDateFormat
 import java.util.*
@@ -197,7 +198,13 @@ fun IncidentCard(
         AlertStatus.SENT -> Color(0xFF2E7D32)
         AlertStatus.CANCELLED -> Color(0xFF757575)
         AlertStatus.FAILED -> MaterialTheme.colorScheme.error
+        AlertStatus.COMPLETED -> Color(0xFF2E7D32)
         else -> MaterialTheme.colorScheme.primary
+    }
+
+    val typeLabel = when (incident.type) {
+        IncidentType.WALK_MODE -> "Walk Mode"
+        else -> incident.type.name
     }
 
     Card(
@@ -215,7 +222,7 @@ fun IncidentCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = incident.type.name,
+                    text = typeLabel,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )

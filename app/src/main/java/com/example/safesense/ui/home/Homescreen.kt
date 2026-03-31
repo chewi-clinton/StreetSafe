@@ -60,6 +60,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.safesense.R
+import com.example.safesense.domain.model.AlertStatus
+import com.example.safesense.domain.model.ConfidenceLevel
+import com.example.safesense.domain.model.Incident
+import com.example.safesense.domain.model.IncidentType
 import com.example.safesense.ui.components.SafeSenseBottomNavBar
 import com.example.safesense.ui.theme.DeepRed
 import com.example.safesense.ui.theme.Gray100
@@ -70,7 +74,11 @@ import com.example.safesense.ui.theme.Gray900
 import com.example.safesense.ui.theme.PrimaryRed
 import com.example.safesense.ui.theme.RedLight
 import com.example.safesense.ui.theme.SuccessGreen
+import com.example.safesense.ui.theme.SuccessLight
 import com.example.safesense.ui.theme.White
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val PulseDot          = Color(0xFF69F0AE)
 private val WarningLight      = Color(0xFFFFF8E1)
@@ -83,10 +91,23 @@ fun HomeScreen(
     onNavigateToHistory: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToCountdown: (IncidentType, ConfidenceLevel) -> Unit = { _, _ -> },
+    onPanicButtonPressed: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Listen for incidents from the background engine
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is HomeEvent.NavigateToCountdown -> {
+                    onNavigateToCountdown(event.incident.type, event.incident.confidenceLevel)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -179,7 +200,7 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                PanicAlertButton(onClick = { /* Phase 3: launch countdown */ })
+                PanicAlertButton(onClick = onPanicButtonPressed)
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -192,7 +213,7 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                RecentActivityList()
+                RecentActivityList(state.recentIncidents)
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -344,35 +365,70 @@ private fun ActionCards(recentIncidentCount: Int, walkModeActive: Boolean, onWal
     }
 }
 
-private data class ActivityItem(val icon: ImageVector, val iconTint: Color, val iconBg: Color, val title: String, val subtitle: String, val time: String)
-
 @Composable
-private fun RecentActivityList() {
-    val items = listOf(
-        ActivityItem(Icons.Filled.Accessibility, Gray600, Gray100, "Fall detected — cancelled", "False positive — user OK", "14:22"),
-        ActivityItem(Icons.Filled.Warning, WarningAmberLocal, WarningLight, "Shake alert sent", "SMS to 2 contacts", "11:05")
-    )
+private fun RecentActivityList(incidents: List<Incident>) {
     Text("RECENT ACTIVITY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Gray600, letterSpacing = 1.2.sp)
     Spacer(modifier = Modifier.height(10.dp))
-    Column {
-        items.forEachIndexed { index, item ->
-            ActivityRow(item)
-            if (index < items.lastIndex) HorizontalDivider(color = Gray200, thickness = 1.dp, modifier = Modifier.padding(start = 56.dp))
+    
+    if (incidents.isEmpty()) {
+        Text(
+            "No recent activity",
+            fontSize = 14.sp,
+            color = Gray400,
+            modifier = Modifier.padding(vertical = 12.dp)
+        )
+    } else {
+        Column {
+            incidents.forEachIndexed { index, incident ->
+                ActivityRow(incident)
+                if (index < incidents.lastIndex) {
+                    HorizontalDivider(
+                        color = Gray200,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(start = 56.dp)
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ActivityRow(item: ActivityItem) {
+private fun ActivityRow(incident: Incident) {
+    val (icon, iconTint, iconBg) = when (incident.type) {
+        IncidentType.FALL      -> Triple(Icons.Default.Accessibility, Gray600, Gray100)
+        IncidentType.SHAKE     -> Triple(Icons.Default.Warning, WarningAmberLocal, WarningLight)
+        IncidentType.WALK_MODE -> Triple(Icons.Outlined.Place, SuccessGreen, SuccessLight)
+        else                   -> Triple(Icons.Default.Warning, Gray600, Gray100)
+    }
+
+    val title = when (incident.type) {
+        IncidentType.FALL      -> "Fall detected"
+        IncidentType.SHAKE     -> "Shake alert"
+        IncidentType.WALK_MODE -> "Walk Mode completed"
+        IncidentType.MANUAL    -> "Manual alert"
+        else                   -> "${incident.type.name} alert"
+    }
+
+    val subtitle = when (incident.alertStatus) {
+        AlertStatus.SENT      -> "SMS sent to contacts"
+        AlertStatus.CANCELLED -> "Cancelled by user"
+        AlertStatus.FAILED    -> "Alert delivery failed"
+        AlertStatus.COMPLETED -> "Arrived safely"
+        else                  -> "Status: ${incident.alertStatus.name}"
+    }
+
+    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(incident.timestampMillis))
+
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(item.iconBg), contentAlignment = Alignment.Center) {
-            Icon(item.icon, null, tint = item.iconTint, modifier = Modifier.size(22.dp))
+        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp))
         }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(item.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
-            Text(item.subtitle, fontSize = 13.sp, color = Gray600)
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+            Text(subtitle, fontSize = 13.sp, color = Gray600)
         }
-        Text(item.time, fontSize = 12.sp, color = Gray400)
+        Text(time, fontSize = 12.sp, color = Gray400)
     }
 }

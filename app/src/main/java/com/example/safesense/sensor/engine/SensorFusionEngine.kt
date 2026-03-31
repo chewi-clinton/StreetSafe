@@ -1,5 +1,6 @@
-package com.example.safesense.sensor.engine
+package com.example.safesense.sensor.fusion
 
+import android.location.Location
 import com.example.safesense.domain.model.ConfidenceLevel
 import com.example.safesense.domain.model.DetectedIncident
 import com.example.safesense.domain.model.DetectionResult
@@ -7,12 +8,12 @@ import com.example.safesense.domain.model.IncidentType
 import com.example.safesense.domain.usecase.DetectCollisionUseCase
 import com.example.safesense.domain.usecase.DetectFallUseCase
 import com.example.safesense.sensor.processor.AccelerometerEvent
+import com.example.safesense.sensor.processor.GPSTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SensorFusionEngine.kt
@@ -36,15 +37,13 @@ import javax.inject.Inject
 //   6. CountdownViewModel subscribes to `incidents` and starts the countdown.
 //
 // THE 500ms CORRELATION WINDOW:
-//   This is the most important constraint in the entire engine.
 //   If proximity changes at t=0 and the accelerometer spike arrives at t=600ms,
 //   we do NOT combine them — 600ms is outside the window.
 //   Why 500ms? Research on fall and collision biomechanics shows that all
 //   body sensor signals from a single event arrive within ~300ms. We use 500ms
 //   to account for sensor polling jitter on low-end Android hardware.
-//   Signals outside this window are INDEPENDENT events, not correlated.
 //
-// THE FIVE DECISION MATRIX ROWS (from master prompt):
+// THE FIVE DECISION MATRIX ROWS:
 //
 //   Row 1: Accelerometer fall algorithm fires
 //          No proximity change within 500ms, no audio within 500ms
@@ -55,45 +54,52 @@ import javax.inject.Inject
 //          → Fall, HIGH confidence
 //
 //   Row 3: Collision algorithm fires (>4g spike + stillness)
-//          Audio distress sound within 500ms (any proximity)
-//          → Collision, HIGH confidence
-//          (Without audio: → Collision, HIGH — collision alone is HIGH)
+//          → Collision, MEDIUM confidence (base)
+//          Upgrade to HIGH if EITHER:
+//            - GPS speed > 10 km/h (vehicle was moving — not a dropped phone)
+//            - Distress sound within 500ms (crash sound detected)
 //
 //   Row 4: No accelerometer event
 //          Proximity changed NEAR→FAR, and audio loud within 500ms
 //          → Snatched, MEDIUM confidence
 //
-//   Row 5: Shake gesture (≥3 shakes in 2s) — NOT handled here yet
+//   Row 5: Shake gesture (≥3 shakes in 2s) from RecognizeShakeGestureUseCase
 //          Proximity is NEAR (phone in hand)
 //          → Shake Alert, HIGH confidence
-//          (Shake detection is Step 17 — this row is a placeholder)
 //
-// WHY NOT USE FLOWS INTERNALLY?
-//   The processors emit on SharedFlows. We COULD collect those flows here.
-//   But that creates back-pressure problems and requires each processor to
-//   be injected as a dependency of this engine.
-//   Instead, SensorForegroundService acts as the coordinator — it collects
-//   all processor flows and calls methods on this engine. This keeps the
-//   engine simple, testable, and dependency-free from Android sensor APIs.
+// AUDIT FIX — COLLISION CONFIDENCE:
+//   OLD: Collision always returned HIGH regardless of corroboration.
+//   PROBLEM: A phone dropped on a hard surface inside a stationary vehicle
+//       could produce a >4g spike + stillness. Without GPS speed or audio
+//       corroboration, this would be a false HIGH-confidence collision alert.
+//   FIX: DetectCollisionUseCase now returns MEDIUM. This engine upgrades to
+//       HIGH only when GPS speed > 10 km/h or audio corroborates.
+//       MEDIUM confidence STILL triggers the countdown — user is protected.
+//
+// AUDIT FIX — GPS SPEED CORROBORATION:
+//   OLD: GPS speed was not checked for collision confidence.
+//   FIX: GPSTracker is now injected. When collision is detected at MEDIUM,
+//       we check lastLocation.speed. If > 10 km/h (2.78 m/s), we upgrade
+//       to HIGH because the phone was in a moving vehicle.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SensorFusionEngine(
     private val scope: CoroutineScope,
     private val detectFallUseCase: DetectFallUseCase,
-    private val detectCollisionUseCase: DetectCollisionUseCase = DetectCollisionUseCase()
+    private val detectCollisionUseCase: DetectCollisionUseCase = DetectCollisionUseCase(),
+    private val gpsTracker: GPSTracker  // NEW: for GPS speed corroboration on collisions
 ) {
 
     companion object {
         // The 500ms correlation window — signals outside this are never combined
         const val CORRELATION_WINDOW_MS = 500L
 
-        // Snatched detection requires both proximity AND audio
-        // If only one fires without the other in the window, ignore it
-        // (proximity change alone could be putting phone in pocket;
-        //  audio alone could be a passing motorbike)
-
-        const val SHAKE_WINDOW_MS = 2000L  // all shakes must occur within this window
-        const val SHAKE_MIN_COUNT = 3      // minimum shakes in the window to qualify
+        // GPS speed threshold for upgrading collision confidence to HIGH
+        // 10 km/h = 2.778 m/s (Android Location.speed is in m/s)
+        // Below this, the phone could be stationary — a dropped phone, not a crash.
+        // Above this, the phone was in a moving vehicle — consistent with collision.
+        const val GPS_SPEED_UPGRADE_THRESHOLD_M_PER_S = 2.778f
     }
 
     // ── Output: the incidents SharedFlow ─────────────────────────────────────
@@ -115,20 +121,11 @@ class SensorFusionEngine(
     @Volatile private var lastProximityTimestamp    = 0L  // last NEAR→FAR transition
     @Volatile private var lastDistressSoundTimestamp = 0L  // last audio spike above threshold
 
-    // ── Row 5 shake tracking ──────────────────────────────────────────────────
-    //
-    // We keep a rolling list of shake timestamps. Every call to onShakeEvent()
-    // appends the current timestamp and drops any entries older than 2 seconds.
-    // When the list reaches 3 entries AND proximity is NEAR (phone is in hand),
-    // Row 5 fires: Shake Alert at HIGH confidence.
-    //
-    // Note: the shake gesture algorithm itself (jerk calculation) lives in
-    // RecognizeShakeGestureUseCase — that is Step 17. For now, onShakeEvent()
-    // is a stub entry point so the wiring is correct. When Step 17 is done,
-    // SensorForegroundService calls this method instead of calling the use case
-    // directly, and Row 5 will fire automatically.
-    private val shakeTimestamps = ArrayDeque<Long>()
-    private var proximityIsNear = false  // true when last proximity state was NEAR
+    // ── Proximity state for shake gesture (Row 5) ────────────────────────────
+    // The RecognizeShakeGestureUseCase handles the actual shake detection.
+    // We just need to know if the phone is NEAR (in hand/pocket) to validate
+    // the gesture. Proximity NEAR means the phone is against the body.
+    private var proximityIsNear = false
 
     // ── Signal entry points — called by SensorForegroundService ──────────────
 
@@ -146,7 +143,7 @@ class SensorFusionEngine(
                 handleFallDetected(fallResult.confidence, event.timestamp)
             }
             collisionResult is DetectionResult.Detected -> {
-                handleCollisionDetected(event.timestamp)
+                handleCollisionDetected(collisionResult.confidence, event.timestamp)
             }
         }
     }
@@ -181,34 +178,21 @@ class SensorFusionEngine(
     }
 
     /**
-     * Row 5: Called by SensorForegroundService when RecognizeShakeGestureUseCase
-     * detects a single shake event (Step 17 will wire this).
+     * Called by SensorForegroundService when RecognizeShakeGestureUseCase
+     * detects a FULL shake gesture (configured shakes within configured window).
      *
-     * We maintain a rolling 2-second window of shake timestamps.
-     * When ≥3 shakes occur within that window AND proximity is NEAR
-     * (phone is in the user's hand), we emit a Shake Alert at HIGH confidence.
-     *
-     * Why NEAR and not FAR? The user is deliberately shaking their phone
-     * as a distress gesture. If the phone is not in their hand (FAR),
-     * the shaking is more likely a bag or vehicle vibration — ignore it.
+     * The use case handles all the shake detection logic (jerk calculation,
+     * counting, timing). We only validate that the phone is in hand (NEAR)
+     * to prevent false triggers from a phone bouncing in a bag or vehicle.
      */
     fun onShakeEvent(timestamp: Long) {
-        // Add this shake and purge any timestamps outside the 2-second window
-        shakeTimestamps.addLast(timestamp)
-        while (shakeTimestamps.isNotEmpty() &&
-            timestamp - shakeTimestamps.first() > SHAKE_WINDOW_MS) {
-            shakeTimestamps.removeFirst()
-        }
+        android.util.Log.d("SafeSense/Fusion", "Shake event received, proximityNear=$proximityIsNear")
 
-        android.util.Log.d(
-            "SafeSense/Fusion",
-            "Shake event: ${shakeTimestamps.size} shakes in last ${SHAKE_WINDOW_MS}ms, proximityNear=$proximityIsNear"
-        )
-
-        if (shakeTimestamps.size >= SHAKE_MIN_COUNT && proximityIsNear) {
-            android.util.Log.d("SafeSense/Fusion", "Row 5: ≥3 shakes + NEAR → SHAKE HIGH")
-            shakeTimestamps.clear()  // prevent double-firing
+        if (proximityIsNear) {
+            android.util.Log.d("SafeSense/Fusion", "Row 5: Shake + phone NEAR → SHAKE HIGH")
             emitIncident(IncidentType.SHAKE, ConfidenceLevel.HIGH, timestamp)
+        } else {
+            android.util.Log.d("SafeSense/Fusion", "Shake ignored — phone is not NEAR (not in hand/pocket)")
         }
     }
 
@@ -217,10 +201,10 @@ class SensorFusionEngine(
     /**
      * Rows 1 and 2: Fall detection
      *
-     * Row 1: Fall alone                → MEDIUM confidence (or whatever use case returned)
+     * Row 1: Fall alone                → MEDIUM confidence (from use case)
      * Row 2: Fall + proximity change   → upgrade to HIGH confidence
      *
-     * The use case already determined LOW/MEDIUM/HIGH from stillness duration.
+     * The use case already determined the base confidence from stillness duration.
      * Proximity corroboration overrides that to HIGH, because the physical
      * signature (phone left body + fall phases) is very specific.
      */
@@ -249,26 +233,70 @@ class SensorFusionEngine(
     /**
      * Row 3: Collision detection
      *
-     * Collision alone already returns HIGH from DetectCollisionUseCase.
-     * Audio corroboration confirms it further (same confidence — already HIGH).
-     * We log which sub-row fired for debugging, but the confidence is HIGH either way.
+     * DetectCollisionUseCase returns MEDIUM confidence (accelerometer only).
+     * This engine upgrades to HIGH when EITHER corroboration is available:
+     *
+     *   - GPS speed > 10 km/h: The phone was in a moving vehicle.
+     *     A stationary phone dropping on a hard surface can produce >4g,
+     *     but a moving vehicle confirms this is a real collision scenario.
+     *
+     *   - Distress sound within 500ms: Metal-on-metal crash sound,
+     *     glass breaking, etc. Corroborates that the impact was violent.
+     *
+     * WHY MEDIUM AS BASE?
+     *   Without corroboration, a >4g spike + stillness could be:
+     *   - Phone dropped from a height onto a hard floor
+     *   - Phone slammed down on a table
+     *   - Phone in a bag that was thrown down
+     *   These are NOT collisions but produce similar accelerometer signatures.
+     *   MEDIUM confidence still triggers the countdown — user is protected.
+     *   HIGH confidence would be inappropriate without corroboration.
+     *
+     * WHY CHECK GPS SPEED INSTEAD OF JUST GPS FIX?
+     *   We don't need coordinates here — we need SPEED. The Location object
+     *   includes speed in m/s. If no GPS fix is available, speed is 0.0,
+     *   and we don't upgrade (correct behavior — can't confirm vehicle motion).
      */
-    private fun handleCollisionDetected(detectionTimestamp: Long) {
+    private fun handleCollisionDetected(baseConfidence: ConfidenceLevel, detectionTimestamp: Long) {
         val audioCorroborated = isWithinWindow(lastDistressSoundTimestamp, detectionTimestamp)
+        val gpsSpeedCorroborated = isGpsSpeedAboveThreshold()
 
-        if (audioCorroborated) {
-            android.util.Log.d(
-                "SafeSense/Fusion",
-                "Row 3a: Collision + distress sound → HIGH"
-            )
-        } else {
-            android.util.Log.d(
-                "SafeSense/Fusion",
-                "Row 3b: Collision alone → HIGH"
-            )
+        val finalConfidence = when {
+            audioCorroborated && gpsSpeedCorroborated -> {
+                // Both corroborations — strongest signal
+                android.util.Log.d(
+                    "SafeSense/Fusion",
+                    "Row 3a: Collision + audio + GPS speed > 10km/h → HIGH"
+                )
+                ConfidenceLevel.HIGH
+            }
+            audioCorroborated -> {
+                // Audio only — crash sound heard
+                android.util.Log.d(
+                    "SafeSense/Fusion",
+                    "Row 3b: Collision + audio → HIGH"
+                )
+                ConfidenceLevel.HIGH
+            }
+            gpsSpeedCorroborated -> {
+                // GPS speed only — vehicle was moving
+                android.util.Log.d(
+                    "SafeSense/Fusion",
+                    "Row 3c: Collision + GPS speed > 10km/h → HIGH"
+                )
+                ConfidenceLevel.HIGH
+            }
+            else -> {
+                // No corroboration — keep the base confidence from use case
+                android.util.Log.d(
+                    "SafeSense/Fusion",
+                    "Row 3d: Collision alone → $baseConfidence"
+                )
+                baseConfidence
+            }
         }
 
-        emitIncident(IncidentType.COLLISION, ConfidenceLevel.HIGH, detectionTimestamp)
+        emitIncident(IncidentType.COLLISION, finalConfidence, detectionTimestamp)
     }
 
     /**
@@ -301,11 +329,10 @@ class SensorFusionEngine(
             lastProximityTimestamp    = 0L
             lastDistressSoundTimestamp = 0L
 
-            emitIncident(IncidentType.SHAKE, ConfidenceLevel.MEDIUM, currentTimestamp)
-            // Note: using SHAKE as a proxy for SNATCHED because IncidentType does not
-            // have a SNATCHED value yet. When IncidentType is expanded in Step 11,
+            emitIncident(IncidentType.COLLISION, ConfidenceLevel.MEDIUM, currentTimestamp)
+            // Note: using COLLISION as a proxy for SNATCHED because IncidentType does not
+            // have a SNATCHED value yet. When IncidentType is expanded,
             // change this to IncidentType.SNATCHED.
-            // For now this ensures the incident reaches CountdownViewModel correctly.
         }
     }
 
@@ -322,6 +349,40 @@ class SensorFusionEngine(
     private fun isWithinWindow(signalTimestamp: Long, detectionTimestamp: Long): Boolean {
         if (signalTimestamp == 0L) return false
         return Math.abs(detectionTimestamp - signalTimestamp) <= CORRELATION_WINDOW_MS
+    }
+
+    /**
+     * Checks whether the GPS reports a speed above the collision threshold.
+     *
+     * Android's Location.speed is in meters per second.
+     * We convert the threshold: 10 km/h = 10 / 3.6 = 2.778 m/s.
+     *
+     * Returns false if:
+     *   - No GPS fix is available (lastLocation is null)
+     *   - GPS speed is below threshold (phone may be stationary)
+     *   - GPS speed is negative (invalid reading from GPS hardware)
+     *
+     * This is a synchronous read from the in-memory StateFlow cache.
+     * It never blocks, never makes a GPS request, never accesses DataStore.
+     */
+    private fun isGpsSpeedAboveThreshold(): Boolean {
+        val location: Location? = gpsTracker.lastLocation.value
+        if (location == null) {
+            android.util.Log.d("SafeSense/Fusion", "GPS speed check: no location fix available")
+            return false
+        }
+
+        val speedMps = location.speed
+        val speedKmh = speedMps * 3.6f
+        val isAboveThreshold = speedMps >= GPS_SPEED_UPGRADE_THRESHOLD_M_PER_S
+
+        android.util.Log.d(
+            "SafeSense/Fusion",
+            "GPS speed check: ${String.format("%.1f", speedKmh)} km/h " +
+                    "(threshold 10.0 km/h) → ${if (isAboveThreshold) "ABOVE" else "BELOW"}"
+        )
+
+        return isAboveThreshold
     }
 
     /**

@@ -1,10 +1,7 @@
 package com.example.safesense.ui.onboarding
 
 import android.Manifest
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -26,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -64,8 +62,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.safesense.R
 import com.example.safesense.domain.model.EmergencyContact
-
-// ── Colours imported directly from your theme file ────────────────────────────
 import com.example.safesense.ui.theme.DeepRed
 import com.example.safesense.ui.theme.Gray100
 import com.example.safesense.ui.theme.Gray200
@@ -78,19 +74,12 @@ import com.example.safesense.ui.theme.PrimaryRed
 import com.example.safesense.ui.theme.SuccessGreen
 import com.example.safesense.ui.theme.SuccessLight
 import com.example.safesense.ui.theme.White
-
-// ── We also need ContactsViewModel to actually write the contact to the database ──
 import com.example.safesense.ui.contacts.ContactsViewModel
 
 @Composable
 fun OnboardingScreen(
     onOnboardingComplete: () -> Unit,
-    // OnboardingViewModel handles step logic and completion flag
     viewModel: OnboardingViewModel = hiltViewModel(),
-    // ContactsViewModel gives us access to insertContact() so the contact
-    // added during onboarding is saved to the same Room database that
-    // ContactsScreen reads from. Without this, the contact was only stored
-    // as a boolean flag (hasAtLeastOneContact) and never persisted.
     contactsViewModel: ContactsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -126,9 +115,6 @@ fun OnboardingScreen(
                         onConfirm = { viewModel.onBatteryWhitelistConfirmed() }
                     )
                     3 -> StepAddContact(
-                        // FIX: we now pass a lambda that does two things:
-                        // 1. Saves the contact to Room via contactsViewModel.insertContact()
-                        // 2. Tells onboardingViewModel a contact exists so NEXT unlocks
                         onContactSaved = { name, phone, relationship ->
                             contactsViewModel.insertContact(
                                 EmergencyContact(
@@ -209,7 +195,7 @@ private fun BottomNavigationBar(
                 }
             }
 
-            Box(modifier = Modifier.width(88.dp), contentAlignment = Alignment.CenterEnd) {
+            Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.CenterEnd) {
                 Button(
                     onClick = onNext,
                     enabled = canAdvance,
@@ -220,13 +206,14 @@ private fun BottomNavigationBar(
                         disabledContainerColor = Gray400,
                         disabledContentColor = White
                     ),
-                    modifier = Modifier.height(40.dp)
+                    modifier = Modifier.height(40.dp).wrapContentWidth()
                 ) {
                     Text(
                         text = if (isLastStep) "FINISH" else "NEXT",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.sp,
+                        maxLines = 1
                     )
                 }
             }
@@ -456,17 +443,6 @@ private fun InstructionRow(number: String, text: String) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX: signature changed from onContactAdded: () -> Unit
-//      to   onContactSaved: (name, phone, relationship) -> Unit
-//
-// The old version only called onContactAdded() which set a boolean flag.
-// That flag unlocked the NEXT button but never wrote anything to the database.
-// The Contacts screen reads from Room via ContactsViewModel, so it saw nothing.
-//
-// Now we pass the actual field values up to OnboardingScreen, which calls
-// contactsViewModel.insertContact() before calling viewModel.onContactAdded().
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun StepAddContact(
     onContactSaved: (name: String, phone: String, relationship: String) -> Unit
@@ -476,7 +452,7 @@ private fun StepAddContact(
     var relationship by remember { mutableStateOf("") }
     var contactSaved by remember { mutableStateOf(false) }
 
-    val phoneIsValid = phone.startsWith("+237") && phone.length >= 12
+    val phoneIsValid = phone.length == 9 && phone.all { it.isDigit() }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = PrimaryRed,
@@ -534,8 +510,15 @@ private fun StepAddContact(
 
         OutlinedTextField(
             value = phone,
-            onValueChange = { phone = it },
-            label = { Text("Phone number (+237...)") },
+            onValueChange = { if (it.length <= 9) phone = it },
+            label = { Text("Phone number") },
+            prefix = { 
+                Text(
+                    text = "+237 ",
+                    color = Gray600,
+                    fontWeight = FontWeight.Medium
+                ) 
+            },
             leadingIcon = {
                 Icon(Icons.Default.Phone, contentDescription = null, tint = Gray600)
             },
@@ -546,7 +529,7 @@ private fun StepAddContact(
             supportingText = {
                 if (phone.isNotEmpty() && !phoneIsValid) {
                     Text(
-                        text = "Must start with +237 \u2014 e.g. +237612345678",
+                        text = "Enter the 9 digits following +237",
                         color = DeepRed,
                         fontSize = 12.sp
                     )
@@ -598,8 +581,7 @@ private fun StepAddContact(
             Button(
                 onClick = {
                     if (name.isNotBlank() && phoneIsValid) {
-                        // Pass all three values up so the parent can write to Room
-                        onContactSaved(name.trim(), phone.trim(), relationship.trim())
+                        onContactSaved(name.trim(), "+237${phone.trim()}", relationship.trim())
                         contactSaved = true
                     }
                 },

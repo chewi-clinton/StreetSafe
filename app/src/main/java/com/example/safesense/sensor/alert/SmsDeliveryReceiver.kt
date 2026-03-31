@@ -5,7 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.safesense.domain.model.AlertStatus
-import com.example.safesense.data.repository.IncidentRepositoryImpl
+import com.example.safesense.domain.repository.IncidentRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +26,7 @@ class SmsDeliveryReceiver : BroadcastReceiver() {
 
     // Hilt injects the repository so we can update the Room database
     @Inject
-    lateinit var incidentRepository: IncidentRepositoryImpl
+    lateinit var incidentRepository: IncidentRepository
 
     override fun onReceive(context: Context, intent: Intent) {
 

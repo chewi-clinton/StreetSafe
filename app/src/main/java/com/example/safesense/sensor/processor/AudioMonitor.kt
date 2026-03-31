@@ -24,29 +24,47 @@ import kotlin.math.log10
 //
 // WHAT THIS DOES:
 //   Listens to the microphone continuously in the background.
-//   When it detects a sound louder than DISTRESS_THRESHOLD_DB (85 dB),
-//   it emits an AudioEvent.DistressSound on the audioEvents SharedFlow.
-//   SensorFusionEngine listens to this and uses it to corroborate falls
-//   and collisions.
+//   When it detects a sound louder than 90 dB that SUSTAINS for 2 continuous
+//   seconds, it emits an AudioEvent.DistressSound on the audioEvents SharedFlow.
+//   SensorFusionEngine listens to this and uses it to corroborate collisions.
 //
-// WHY 85 dB?
-//   Normal conversation is ~60 dB. A scream or crash is 85–110 dB.
-//   85 dB is loud enough to filter out background noise in Yaoundé traffic
-//   while still catching a genuine distress sound.
-//   This value can be adjusted in Step 9 if we get false positives.
+// WHY 90 dB? (not 85)
+//   The build guide specifies 90 dB. Normal conversation is ~60 dB. A scream
+//   or crash metal-on-metal impact is 90–110 dB. 90 dB filters out shouting
+//   and loud traffic while catching genuine distress.
+//
+// WHY 2-SECOND SUSTAIN?
+//   Without sustain, any momentary noise (door slam, car horn, dropping an
+//   object) would emit a DistressSound event. If that momentary noise happens
+//   to coincide with a moto-taxi bump (very common in Yaoundé), the
+//   FusionEngine would see high-g + loud sound and dispatch a FALSE alert.
+//   Requiring 2 seconds of sustained loud sound eliminates this class of
+//   false positive. A real scream or crash sustains. A door slam does not.
+//
+// TRADE-OFF:
+//   The DistressSound event fires at the 2-second mark, not at the start of
+//   the sound. This means it may miss the FusionEngine's 500ms correlation
+//   window with the initial impact. This is ACCEPTABLE because:
+//   - Audio is a CORROBORATION signal, not the primary detection signal
+//   - The accelerometer still detects the impact independently
+//   - Missing audio corroboration means MEDIUM confidence instead of HIGH
+//   - MEDIUM confidence STILL triggers the countdown — the user is still protected
+//   - Preventing false alerts is more important than upgrading confidence
 //
 // WHY AudioRecord INSTEAD OF MediaRecorder?
 //   MediaRecorder writes to a file. We do not want files — we want raw
 //   amplitude readings in real time. AudioRecord gives us raw PCM samples
 //   directly in memory, which we convert to dB. No storage required.
 //
-// WHY NOT run on Dispatchers.Main?
-//   Audio processing is CPU-heavy. Running it on Dispatchers.IO keeps it
-//   off the main thread so the UI never stutters.
+// WHY System.currentTimeMillis() HERE instead of sensor timestamp?
+//   Unlike accelerometer/proximity sensors, AudioRecord does not provide
+//   hardware clock timestamps. System.currentTimeMillis() is the only
+//   option. This is acceptable because audio events are used for
+//   corroboration, not precise timing correlation.
 //
 // PERMISSION:
 //   RECORD_AUDIO permission must be granted before start() is called.
-//   The caller (SensorForegroundService) is responsible for checking this.
+//   The caller (SensorMonitoringService) is responsible for checking this.
 //   If the permission is missing, AudioRecord initialization will fail
 //   and start() returns silently without crashing.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,8 +72,10 @@ import kotlin.math.log10
 class AudioMonitor {
 
     companion object {
-        const val DISTRESS_THRESHOLD_DB = 85.0    // dB — above this = distress sound
-        const val SAMPLE_RATE_HZ        = 44100   // standard audio sample rate
+        // ── FIX: Changed from 85dB to 90dB as specified in the build guide ──
+        const val DISTRESS_THRESHOLD_DB = 90.0       // dB — above this = potential distress sound
+        const val SUSTAIN_REQUIRED_MS   = 2000L      // Must sustain for 2 continuous seconds
+        const val SAMPLE_RATE_HZ        = 44100      // Standard audio sample rate
         const val CHANNEL_CONFIG        = AudioFormat.CHANNEL_IN_MONO
         const val AUDIO_FORMAT          = AudioFormat.ENCODING_PCM_16BIT
     }
@@ -72,6 +92,19 @@ class AudioMonitor {
     private var samplingJob: Job? = null
     private var audioRecord: AudioRecord? = null
 
+    // ── Sustain tracking state ────────────────────────────────────────────────
+    // These track whether a loud sound has been continuous for 2 seconds.
+    // They are only accessed from the single coroutine in samplingJob,
+    // so no synchronization is needed.
+
+    // The time (System.currentTimeMillis) when the sound first went above threshold.
+    // null means no loud sound is currently being tracked.
+    private var distressStartTime: Long? = null
+
+    // True if we already emitted a DistressSound for the current sustained event.
+    // Prevents emitting multiple DistressSound events for one long scream.
+    private var hasEmittedForCurrentSustain: Boolean = false
+
     // ── Start ─────────────────────────────────────────────────────────────────
 
     fun start() {
@@ -84,7 +117,6 @@ class AudioMonitor {
         )
 
         // If bufferSize is ERROR or ERROR_BAD_VALUE, the device cannot record.
-        // This should not happen on any real device but we guard against it.
         if (bufferSize <= 0) {
             android.util.Log.w("SafeSense/Audio", "AudioRecord buffer size invalid: $bufferSize")
             return
@@ -114,6 +146,10 @@ class AudioMonitor {
         record.startRecording()
         _isActive.value = true
 
+        // ── Reset sustain state on every start ──
+        distressStartTime = null
+        hasEmittedForCurrentSustain = false
+
         samplingJob = monitorScope.launch {
             val buffer = ShortArray(bufferSize)
 
@@ -122,20 +158,60 @@ class AudioMonitor {
 
                 if (readCount > 0) {
                     val db = calculateDecibels(buffer, readCount)
+                    val now = System.currentTimeMillis()
 
-                    val event = when {
-                        db >= DISTRESS_THRESHOLD_DB ->
-                            AudioEvent.DistressSound(db, System.currentTimeMillis())
-                        else ->
-                            AudioEvent.Normal(db, System.currentTimeMillis())
+                    // ── FIX #4: 2-second sustain check ───────────────────────
+                    if (db >= DISTRESS_THRESHOLD_DB) {
+                        // Sound is loud — start or continue tracking
+                        if (distressStartTime == null) {
+                            // First buffer above threshold — start the timer
+                            distressStartTime = now
+                            hasEmittedForCurrentSustain = false
+                            android.util.Log.d(
+                                "SafeSense/Audio",
+                                "Loud sound detected (${String.format("%.1f", db)} dB) — starting 2s sustain timer"
+                            )
+                        }
+
+                        // Check if sound has sustained for 2 seconds
+                        // AND we haven't already emitted for this event
+                        if (!hasEmittedForCurrentSustain) {
+                            val sustainedMs = now - (distressStartTime ?: now)
+                            if (sustainedMs >= SUSTAIN_REQUIRED_MS) {
+                                hasEmittedForCurrentSustain = true
+                                _audioEvents.tryEmit(
+                                    AudioEvent.DistressSound(db, now)
+                                )
+                                android.util.Log.w(
+                                    "SafeSense/Audio",
+                                    "DISTRESS SOUND CONFIRMED after ${sustainedMs}ms at ${String.format("%.1f", db)} dB"
+                                )
+                            }
+                        }
+                        // While above threshold but before 2s: emit nothing.
+                        // This silence prevents the FusionEngine from seeing
+                        // a premature DistressSound that would cause a false alert.
+
+                    } else {
+                        // Sound dropped below threshold — reset everything
+                        if (distressStartTime != null) {
+                            val sustainedMs = now - (distressStartTime ?: now)
+                            android.util.Log.d(
+                                "SafeSense/Audio",
+                                "Sound dropped below threshold after ${sustainedMs}ms — sustain check failed, reset"
+                            )
+                        }
+                        distressStartTime = null
+                        hasEmittedForCurrentSustain = false
+
+                        // Emit Normal to show the mic is alive
+                        _audioEvents.tryEmit(AudioEvent.Normal(db, now))
                     }
-
-                    _audioEvents.tryEmit(event)
                 }
             }
         }
 
-        android.util.Log.d("SafeSense/Audio", "AudioMonitor started")
+        android.util.Log.d("SafeSense/Audio", "AudioMonitor started (threshold=90dB, sustain=2s)")
     }
 
     // ── Stop ──────────────────────────────────────────────────────────────────
@@ -152,6 +228,10 @@ class AudioMonitor {
         }
         audioRecord = null
         _isActive.value = false
+
+        // ── Reset sustain state on stop ──
+        distressStartTime = null
+        hasEmittedForCurrentSustain = false
 
         android.util.Log.d("SafeSense/Audio", "AudioMonitor stopped")
     }

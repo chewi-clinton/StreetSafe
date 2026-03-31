@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class HistoryFilter {
-    ALL, SENT, CANCELLED, FALLS, SHAKE, SNATCH, MANUAL
+    ALL, SENT, CANCELLED, FALLS, SHAKE, SNATCH, MANUAL, WALK_MODE
 }
 
 data class HistoryUiState(
@@ -80,6 +80,7 @@ class IncidentHistoryViewModel @Inject constructor(
             HistoryFilter.SHAKE     -> incidents.filter { it.type == IncidentType.SHAKE }
             HistoryFilter.SNATCH    -> incidents.filter { it.type == IncidentType.COLLISION }
             HistoryFilter.MANUAL    -> incidents.filter { it.type == IncidentType.MANUAL }
+            HistoryFilter.WALK_MODE -> incidents.filter { it.type == IncidentType.WALK_MODE }
         }
 
     private fun groupByDate(incidents: List<Incident>): Map<String, List<Incident>> {

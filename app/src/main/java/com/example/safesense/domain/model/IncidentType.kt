@@ -5,5 +5,6 @@ enum class IncidentType {
     COLLISION,
     SHAKE,
     MANUAL,
-    SOUND
+    SOUND,
+    WALK_MODE
 }

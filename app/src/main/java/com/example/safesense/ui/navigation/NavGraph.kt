@@ -10,9 +10,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,27 +19,27 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.safesense.domain.model.ConfidenceLevel
 import com.example.safesense.domain.model.IncidentType
+import com.example.safesense.data.preferences.UserPreferencesRepository
 import com.example.safesense.ui.countdown.CountdownScreen
 import com.example.safesense.ui.history.IncidentHistoryScreen
+import com.example.safesense.ui.history.IncidentDetailScreen
 import com.example.safesense.ui.contacts.AddEditContactScreen
 import com.example.safesense.ui.contacts.ContactsScreen
 import com.example.safesense.ui.home.HomeScreen
 import com.example.safesense.ui.onboarding.OnboardingScreen
 import com.example.safesense.ui.settings.SettingsScreen
 import com.example.safesense.ui.splash.SplashScreen
-import kotlinx.coroutines.flow.map
-
-private val ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("onboarding_complete")
+import com.example.safesense.ui.walkmode.WalkModeScreen
+import com.example.safesense.ui.walkmode.WalkModeViewModel
 
 @SuppressLint("FlowOperatorInvokedInComposition")
 @Composable
 fun SafeSenseNavGraph(
-    dataStore: DataStore<Preferences>,
+    userPreferencesRepository: UserPreferencesRepository,
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier
 ) {
-    val onboardingComplete by dataStore.data
-        .map { prefs -> prefs[ONBOARDING_COMPLETE_KEY] ?: false }
+    val onboardingComplete by userPreferencesRepository.isOnboardingComplete
         .collectAsState(initial = false)
 
     val navigateToHome = {
@@ -68,11 +66,11 @@ fun SafeSenseNavGraph(
         }
     }
 
-    val navigateToCountdown = {
+    val navigateToCountdown = { type: IncidentType, confidence: ConfidenceLevel ->
         navController.navigate(
             Screen.Countdown.route
-                .replace("{incidentType}", IncidentType.SHAKE.name)
-                .replace("{confidence}", ConfidenceLevel.HIGH.name)
+                .replace("{incidentType}", type.name)
+                .replace("{confidence}", confidence.name)
         )
     }
 
@@ -108,7 +106,8 @@ fun SafeSenseNavGraph(
                 onNavigateToHistory = navigateToHistory,
                 onNavigateToContacts = navigateToContacts,
                 onNavigateToSettings = navigateToSettings,
-                onNavigateToWalkMode = { navController.navigate(Screen.WalkMode.route) }
+                onNavigateToWalkMode = { navController.navigate(Screen.WalkMode.route) },
+                onPanicButtonPressed = { navigateToCountdown(IncidentType.MANUAL, ConfidenceLevel.HIGH) }
             )
         }
 
@@ -120,8 +119,8 @@ fun SafeSenseNavGraph(
             )
         ) { backStackEntry ->
             val incidentType = backStackEntry.arguments?.getString("incidentType")
-                ?.let { runCatching { IncidentType.valueOf(it) }.getOrDefault(IncidentType.SHAKE) }
-                ?: IncidentType.SHAKE
+                ?.let { runCatching { IncidentType.valueOf(it) }.getOrDefault(IncidentType.MANUAL) }
+                ?: IncidentType.MANUAL
             val confidence = backStackEntry.arguments?.getString("confidence")
                 ?.let { runCatching { ConfidenceLevel.valueOf(it) }.getOrDefault(ConfidenceLevel.HIGH) }
                 ?: ConfidenceLevel.HIGH
@@ -135,7 +134,14 @@ fun SafeSenseNavGraph(
         }
 
         composable(route = Screen.WalkMode.route) {
-            PlaceholderScreen(name = "Walk Mode")
+            val viewModel: WalkModeViewModel = hiltViewModel()
+            WalkModeScreen(
+                onBack = { navController.popBackStack() },
+                onTriggerCountdown = { type, confidence ->
+                    navigateToCountdown(type, confidence)
+                },
+                viewModel = viewModel
+            )
         }
 
         composable(route = Screen.Contacts.route) {
@@ -180,8 +186,12 @@ fun SafeSenseNavGraph(
         composable(
             route = Screen.IncidentDetail.route + "/{incidentId}",
             arguments = listOf(navArgument("incidentId") { type = NavType.LongType })
-        ) {
-            PlaceholderScreen(name = "Incident Detail")
+        ) { backStackEntry ->
+            val incidentId = backStackEntry.arguments?.getLong("incidentId") ?: 0L
+            IncidentDetailScreen(
+                incidentId = incidentId,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable(route = Screen.Settings.route) {
@@ -189,7 +199,7 @@ fun SafeSenseNavGraph(
                 onNavigateToHome = navigateToHome,
                 onNavigateToContacts = navigateToContacts,
                 onNavigateToHistory = navigateToHistory,
-                onNavigateToCountdown = navigateToCountdown
+                onNavigateToCountdown = { navigateToCountdown(IncidentType.MANUAL, ConfidenceLevel.HIGH) }
             )
         }
 

@@ -5,5 +5,6 @@ enum class AlertStatus {
     SENT,
     DELIVERED,
     CANCELLED,
-    FAILED
+    FAILED,
+    COMPLETED
 }
