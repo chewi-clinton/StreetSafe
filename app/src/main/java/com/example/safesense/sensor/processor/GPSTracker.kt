@@ -15,29 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GPSTracker.kt
-// Location: sensor/processor/GPSTracker.kt
-//
-// Uses android.location.LocationManager directly (NOT FusedLocationProviderClient).
-// This satisfies the audit requirement for offline GPS on devices without
-// Google Play Services and in Airplane Mode.
-//
-// WHY LocationManager instead of FusedLocationProvider?
-//   FusedLocationProviderClient requires Google Play Services. On Tecno/Infinix
-//   devices or in Airplane Mode, it hangs indefinitely with no location fix.
-//   LocationManager.GPS_PROVIDER talks directly to the GPS hardware and works
-//   with SIM card inserted, no internet, no WiFi, no Play Services.
-//
-// WHY cache in memory?
-//   At alert time, we CANNOT make a blocking location request. GPS might take
-//   30-60 seconds to acquire a fix. The SMS must send immediately with the
-//   most recent known location. If no fix has ever arrived, the SMS says
-//   "Location unavailable" rather than hanging.
-//
-// LAST FIX CACHED: This file passed the audit. No changes needed.
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Singleton
 class GPSTracker @Inject constructor(
     @ApplicationContext private val context: Context
@@ -45,16 +22,14 @@ class GPSTracker @Inject constructor(
 
     companion object {
         private const val TAG = "GPSTracker"
-        private const val INTERVAL_MS = 30_000L  // Update every 30 seconds
+        private const val INTERVAL_MS = 10_000L  // Update every 10 seconds for better responsiveness
     }
 
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-    // Holds the most recent GPS fix. Null until the first fix arrives.
     private val _lastLocation = MutableStateFlow<Location?>(null)
     val lastLocation: StateFlow<Location?> = _lastLocation.asStateFlow()
 
-    // hasValidFix: false = no fix yet (GPS dot grey), true = fix received (GPS dot green)
     private val _hasValidFix = MutableStateFlow(false)
     val hasValidFix: StateFlow<Boolean> = _hasValidFix.asStateFlow()
 
@@ -62,7 +37,7 @@ class GPSTracker @Inject constructor(
         override fun onLocationChanged(location: Location) {
             _lastLocation.value = location
             _hasValidFix.value = true
-            Log.d(TAG, "GPS fix: lat=${location.latitude}, lng=${location.longitude}, accuracy=${location.accuracy}m")
+            Log.d(TAG, "Location update: lat=${location.latitude}, lng=${location.longitude}, source=${location.provider}")
         }
 
         @Deprecated("Deprecated in Java")
@@ -71,32 +46,60 @@ class GPSTracker @Inject constructor(
         override fun onProviderDisabled(provider: String) {}
     }
 
-    @SuppressLint("MissingPermission") // Permission checked by caller (SensorMonitoringService)
+    @SuppressLint("MissingPermission")
     fun start() {
-        Log.d(TAG, "Starting GPS updates via LocationManager every ${INTERVAL_MS / 1000}s")
+        Log.d(TAG, "Starting location updates")
         try {
-            locationManager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                INTERVAL_MS,
-                0f,
-                locationListener,
-                Looper.getMainLooper()
-            )
+            // Request from GPS_PROVIDER for high accuracy
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    INTERVAL_MS,
+                    0f,
+                    locationListener,
+                    Looper.getMainLooper()
+                )
+            }
+
+            // Also request from NETWORK_PROVIDER for faster indoor fix
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    INTERVAL_MS,
+                    0f,
+                    locationListener,
+                    Looper.getMainLooper()
+                )
+            }
+            
+            // Try to get last known location immediately
+            val lastGps = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            val lastNet = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            val bestLast = if (isBetterLocation(lastGps, lastNet)) lastGps else lastNet
+            
+            if (bestLast != null) {
+                _lastLocation.value = bestLast
+                _hasValidFix.value = true
+            }
+
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start GPS updates", e)
+            Log.e(TAG, "Failed to start location updates", e)
         }
     }
 
     fun stop() {
-        Log.d(TAG, "Stopping GPS updates")
+        Log.d(TAG, "Stopping location updates")
         locationManager.removeUpdates(locationListener)
     }
 
-    // Called by SmsAlertDispatcher when building the emergency SMS. Never blocks.
+    private fun isBetterLocation(loc1: Location?, loc2: Location?): Boolean {
+        if (loc1 == null) return false
+        if (loc2 == null) return true
+        return loc1.time > loc2.time || loc1.accuracy < loc2.accuracy
+    }
+
     fun getLastLocationForAlert(): Location? = _lastLocation.value
 
-    // Formats location as a Google Maps URL for the SMS body.
-    // Works without Google Maps app installed — opens in any browser.
     fun formatForSms(): String {
         val loc = _lastLocation.value
         return if (loc != null) {

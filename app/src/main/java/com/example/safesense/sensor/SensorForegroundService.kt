@@ -16,6 +16,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.safesense.data.preferences.UserPreferences
 import com.example.safesense.domain.model.DetectedIncident
+import com.example.safesense.domain.model.DetectionResult
 import com.example.safesense.domain.usecase.RecognizeShakeGestureUseCase
 import com.example.safesense.sensor.fusion.SensorFusionEngine
 import com.example.safesense.sensor.processor.AccelerometerProcessor
@@ -23,6 +24,7 @@ import com.example.safesense.sensor.processor.AudioEvent
 import com.example.safesense.sensor.processor.AudioMonitor
 import com.example.safesense.sensor.processor.GPSTracker
 import com.example.safesense.sensor.processor.ProximityProcessor
+import com.example.safesense.sensor.processor.ProximityState
 import com.example.safesense.sensor.worker.SensorHeartbeatWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -51,14 +53,12 @@ class SensorForegroundService : Service() {
         const val ACTION_START    = "ACTION_START"
         const val ACTION_STOP     = "ACTION_STOP"
 
-        // ── Live status — observed by HomeViewModel ───────────────────────────
         private val _accelerometerActive = MutableStateFlow(false)
         val accelerometerActive: StateFlow<Boolean> = _accelerometerActive.asStateFlow()
 
         private val _audioActive = MutableStateFlow(false)
         val audioActive: StateFlow<Boolean> = _audioActive.asStateFlow()
 
-        // ── Incident stream — observed by CountdownViewModel ──────────────────
         private val _incidents = MutableSharedFlow<DetectedIncident>(
             extraBufferCapacity = 1
         )
@@ -107,8 +107,6 @@ class SensorForegroundService : Service() {
         serviceScope.cancel()
     }
 
-    // ── Engine start/stop ─────────────────────────────────────────────────────
-
     private fun startSensorEngine() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
@@ -116,12 +114,10 @@ class SensorForegroundService : Service() {
         proximityProcessor.start()
         gpsTracker.start()
 
-        // AUDIT FIX: Load user-configured shake thresholds before processing starts
         serviceScope.launch {
             recognizeShakeGestureUseCase.loadPreferences()
         }
 
-        // Only start audio monitor if enabled in settings
         serviceScope.launch {
             val prefs = dataStore.data.first()
             val audioEnabled = prefs[UserPreferences.MICROPHONE_DETECTION_ENABLED] ?: false
@@ -130,7 +126,6 @@ class SensorForegroundService : Service() {
             }
         }
 
-        // Pipe status to companion objects
         accelerometerProcessor.isActive
             .onEach { isActive -> _accelerometerActive.value = isActive }
             .launchIn(serviceScope)
@@ -174,14 +169,12 @@ class SensorForegroundService : Service() {
         stopSelf()
     }
 
-    // ── Event collectors ──────────────────────────────────────────────────────
-
     private fun collectAccelerometerEvents() {
         serviceScope.launch {
             accelerometerProcessor.accelerometerEvents.collect { event ->
                 fusionEngine.onAccelerometerEvent(event)
                 dataStore.edit { prefs ->
-                    prefs[UserPreferences.LAST_ACCELEROMETER_TIMESTAMP] = event.timestamp
+                    prefs[UserPreferences.LAST_ACCELEROMETER_TIMESTAMP] = System.currentTimeMillis()
                 }
             }
         }
@@ -192,7 +185,7 @@ class SensorForegroundService : Service() {
             proximityProcessor.proximityEvents.collect { event ->
                 fusionEngine.onProximityChanged(
                     timestamp = event.timestamp,
-                    isNear    = event.state == com.example.safesense.sensor.processor.ProximityState.NEAR
+                    isNear    = event.state == ProximityState.NEAR
                 )
             }
         }
@@ -212,7 +205,7 @@ class SensorForegroundService : Service() {
         serviceScope.launch {
             accelerometerProcessor.accelerometerEvents.collect { event ->
                 val result = recognizeShakeGestureUseCase.process(event)
-                if (result is com.example.safesense.domain.model.DetectionResult.Detected) {
+                if (result is DetectionResult.Detected) {
                     fusionEngine.onShakeEvent(event.timestamp)
                 }
             }
@@ -226,8 +219,6 @@ class SensorForegroundService : Service() {
             }
         }
     }
-
-    // ── WorkManager heartbeat ─────────────────────────────────────────────────
 
     private fun scheduleHeartbeat() {
         val heartbeatRequest = PeriodicWorkRequestBuilder<SensorHeartbeatWorker>(
@@ -244,8 +235,6 @@ class SensorForegroundService : Service() {
     private fun cancelHeartbeat() {
         WorkManager.getInstance(this).cancelUniqueWork(SensorHeartbeatWorker.WORK_NAME)
     }
-
-    // ── Notification ──────────────────────────────────────────────────────────
 
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
