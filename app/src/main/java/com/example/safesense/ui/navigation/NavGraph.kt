@@ -107,6 +107,7 @@ fun SafeSenseNavGraph(
                 onNavigateToContacts = navigateToContacts,
                 onNavigateToSettings = navigateToSettings,
                 onNavigateToWalkMode = { navController.navigate(Screen.WalkMode.route) },
+                onNavigateToCountdown = navigateToCountdown,
                 onPanicButtonPressed = { navigateToCountdown(IncidentType.MANUAL, ConfidenceLevel.HIGH) }
             )
         }

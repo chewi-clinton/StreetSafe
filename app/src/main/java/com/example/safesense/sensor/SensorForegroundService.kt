@@ -59,8 +59,11 @@ class SensorForegroundService : Service() {
         private val _audioActive = MutableStateFlow(false)
         val audioActive: StateFlow<Boolean> = _audioActive.asStateFlow()
 
+        // ── FIX: Use a buffered SharedFlow to ensure incidents are not lost ──
+        // extraBufferCapacity = 64 ensures that even if the UI is busy, we don't drop events.
         private val _incidents = MutableSharedFlow<DetectedIncident>(
-            extraBufferCapacity = 1
+            replay = 0,
+            extraBufferCapacity = 64 
         )
         val incidents: SharedFlow<DetectedIncident> = _incidents.asSharedFlow()
     }
@@ -116,14 +119,8 @@ class SensorForegroundService : Service() {
 
         serviceScope.launch {
             recognizeShakeGestureUseCase.loadPreferences()
-        }
-
-        serviceScope.launch {
-            val prefs = dataStore.data.first()
-            val audioEnabled = prefs[UserPreferences.MICROPHONE_DETECTION_ENABLED] ?: false
-            if (audioEnabled) {
-                audioMonitor.start()
-            }
+            collectShakeEvents()
+            collectAudioEventsWithPrefs()
         }
 
         accelerometerProcessor.isActive
@@ -136,8 +133,6 @@ class SensorForegroundService : Service() {
 
         collectAccelerometerEvents()
         collectProximityEvents()
-        collectAudioEvents()
-        collectShakeEvents()
         collectIncidents()
         scheduleHeartbeat()
 
@@ -191,11 +186,16 @@ class SensorForegroundService : Service() {
         }
     }
 
-    private fun collectAudioEvents() {
+    private fun collectAudioEventsWithPrefs() {
         serviceScope.launch {
-            audioMonitor.audioEvents.collect { event ->
-                if (event is AudioEvent.DistressSound) {
-                    fusionEngine.onDistressSoundDetected(event.timestamp)
+            val prefs = dataStore.data.first()
+            val audioEnabled = prefs[UserPreferences.MICROPHONE_DETECTION_ENABLED] ?: false
+            if (audioEnabled) {
+                audioMonitor.start()
+                audioMonitor.audioEvents.collect { event ->
+                    if (event is AudioEvent.DistressSound) {
+                        fusionEngine.onDistressSoundDetected(event.timestamp)
+                    }
                 }
             }
         }
@@ -206,6 +206,7 @@ class SensorForegroundService : Service() {
             accelerometerProcessor.accelerometerEvents.collect { event ->
                 val result = recognizeShakeGestureUseCase.process(event)
                 if (result is DetectionResult.Detected) {
+                    android.util.Log.d("SensorForegroundService", "Shake detected! Forwarding to FusionEngine.")
                     fusionEngine.onShakeEvent(event.timestamp)
                 }
             }
@@ -215,7 +216,12 @@ class SensorForegroundService : Service() {
     private fun collectIncidents() {
         serviceScope.launch {
             fusionEngine.incidents.collect { incident ->
-                _incidents.emit(incident)
+                android.util.Log.d("SensorForegroundService", "Incident received from FusionEngine: ${incident.type}")
+                // Use tryEmit to avoid suspending the sensor processing loop
+                val success = _incidents.tryEmit(incident)
+                if (!success) {
+                    android.util.Log.e("SensorForegroundService", "Failed to emit incident - buffer full!")
+                }
             }
         }
     }
