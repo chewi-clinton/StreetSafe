@@ -3,6 +3,7 @@ package com.example.safesense.sensor
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.hardware.SensorManager
@@ -14,9 +15,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.safesense.MainActivity
 import com.example.safesense.data.preferences.UserPreferences
+import com.example.safesense.domain.model.ConfidenceLevel
 import com.example.safesense.domain.model.DetectedIncident
 import com.example.safesense.domain.model.DetectionResult
+import com.example.safesense.domain.model.IncidentType
 import com.example.safesense.domain.usecase.RecognizeShakeGestureUseCase
 import com.example.safesense.sensor.fusion.SensorFusionEngine
 import com.example.safesense.sensor.processor.AccelerometerProcessor
@@ -37,8 +41,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -49,18 +54,21 @@ class SensorForegroundService : Service() {
 
     companion object {
         const val CHANNEL_ID      = "safesense_sensor_channel"
+        const val ALERT_CHANNEL_ID = "safesense_alert_channel"
         const val NOTIFICATION_ID = 1
+        const val ALERT_NOTIFICATION_ID = 2
         const val ACTION_START    = "ACTION_START"
         const val ACTION_STOP     = "ACTION_STOP"
 
         private val _accelerometerActive = MutableStateFlow(false)
         val accelerometerActive: StateFlow<Boolean> = _accelerometerActive.asStateFlow()
 
+        private val _proximityActive = MutableStateFlow(false)
+        val proximityActive: StateFlow<Boolean> = _proximityActive.asStateFlow()
+
         private val _audioActive = MutableStateFlow(false)
         val audioActive: StateFlow<Boolean> = _audioActive.asStateFlow()
 
-        // ── FIX: Use a buffered SharedFlow to ensure incidents are not lost ──
-        // extraBufferCapacity = 64 ensures that even if the UI is busy, we don't drop events.
         private val _incidents = MutableSharedFlow<DetectedIncident>(
             replay = 0,
             extraBufferCapacity = 64 
@@ -68,7 +76,7 @@ class SensorForegroundService : Service() {
         val incidents: SharedFlow<DetectedIncident> = _incidents.asSharedFlow()
     }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private lateinit var sensorManager: SensorManager
     private lateinit var accelerometerProcessor: AccelerometerProcessor
@@ -80,9 +88,11 @@ class SensorForegroundService : Service() {
     @Inject lateinit var dataStore: DataStore<Preferences>
     @Inject lateinit var recognizeShakeGestureUseCase: RecognizeShakeGestureUseCase
 
+    private var isEngineRunning = false
+
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
         sensorManager          = getSystemService(SENSOR_SERVICE) as SensorManager
         accelerometerProcessor = AccelerometerProcessor(sensorManager)
         proximityProcessor     = ProximityProcessor(sensorManager)
@@ -101,28 +111,30 @@ class SensorForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        accelerometerProcessor.stop()
-        proximityProcessor.stop()
-        gpsTracker.stop()
-        audioMonitor.stop()
-        _accelerometerActive.value = false
-        _audioActive.value = false
-        serviceScope.cancel()
+        stopSensorEngine()
     }
 
     private fun startSensorEngine() {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (isEngineRunning) return
+        isEngineRunning = true
+
+        // Re-create scope if it was cancelled
+        if (!serviceScope.launch { }.isActive) {
+            serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        }
+
+        startForeground(NOTIFICATION_ID, buildStatusNotification())
 
         accelerometerProcessor.start()
         proximityProcessor.start()
         gpsTracker.start()
+        
+        _proximityActive.value = true
 
-        serviceScope.launch {
-            recognizeShakeGestureUseCase.loadPreferences()
-            collectShakeEvents()
-            collectAudioEventsWithPrefs()
-        }
+        // Observe microphone setting in real-time
+        observeAudioSetting()
 
+        // Sync processor status flows to our companion state flows
         accelerometerProcessor.isActive
             .onEach { isActive -> _accelerometerActive.value = isActive }
             .launchIn(serviceScope)
@@ -131,8 +143,15 @@ class SensorForegroundService : Service() {
             .onEach { isActive -> _audioActive.value = isActive }
             .launchIn(serviceScope)
 
+        // Launch shake preference loading and event collection
+        serviceScope.launch {
+            recognizeShakeGestureUseCase.loadPreferences()
+            collectShakeEvents()
+        }
+
         collectAccelerometerEvents()
         collectProximityEvents()
+        collectAudioEvents()
         collectIncidents()
         scheduleHeartbeat()
 
@@ -144,6 +163,9 @@ class SensorForegroundService : Service() {
     }
 
     private fun stopSensorEngine() {
+        if (!isEngineRunning) return
+        isEngineRunning = false
+
         serviceScope.launch {
             dataStore.edit { prefs ->
                 prefs[UserPreferences.IS_MONITORING] = false
@@ -154,12 +176,17 @@ class SensorForegroundService : Service() {
         proximityProcessor.stop()
         gpsTracker.stop()
         audioMonitor.stop()
+        
         _accelerometerActive.value = false
-        _audioActive.value = false
+        _proximityActive.value     = false
+        _audioActive.value         = false
 
         cancelHeartbeat()
 
         serviceScope.cancel()
+        // Re-initialize for next use
+        serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -186,16 +213,27 @@ class SensorForegroundService : Service() {
         }
     }
 
-    private fun collectAudioEventsWithPrefs() {
+    private fun observeAudioSetting() {
+        dataStore.data
+            .map { prefs -> prefs[UserPreferences.MICROPHONE_DETECTION_ENABLED] ?: false }
+            .distinctUntilChanged()
+            .onEach { enabled ->
+                if (enabled) {
+                    android.util.Log.d("SensorForegroundService", "Microphone enabled in settings. Starting monitor.")
+                    audioMonitor.start()
+                } else {
+                    android.util.Log.d("SensorForegroundService", "Microphone disabled in settings. Stopping monitor.")
+                    audioMonitor.stop()
+                }
+            }
+            .launchIn(serviceScope)
+    }
+
+    private fun collectAudioEvents() {
         serviceScope.launch {
-            val prefs = dataStore.data.first()
-            val audioEnabled = prefs[UserPreferences.MICROPHONE_DETECTION_ENABLED] ?: false
-            if (audioEnabled) {
-                audioMonitor.start()
-                audioMonitor.audioEvents.collect { event ->
-                    if (event is AudioEvent.DistressSound) {
-                        fusionEngine.onDistressSoundDetected(event.timestamp)
-                    }
+            audioMonitor.audioEvents.collect { event ->
+                if (event is AudioEvent.DistressSound) {
+                    fusionEngine.onDistressSoundDetected(event.timestamp)
                 }
             }
         }
@@ -217,13 +255,50 @@ class SensorForegroundService : Service() {
         serviceScope.launch {
             fusionEngine.incidents.collect { incident ->
                 android.util.Log.d("SensorForegroundService", "Incident received from FusionEngine: ${incident.type}")
-                // Use tryEmit to avoid suspending the sensor processing loop
-                val success = _incidents.tryEmit(incident)
-                if (!success) {
-                    android.util.Log.e("SensorForegroundService", "Failed to emit incident - buffer full!")
+                
+                // Always emit to the flow for UI listeners
+                _incidents.tryEmit(incident)
+                
+                // If the UI is not in the foreground (no active subscribers), show a high-priority notification
+                if (_incidents.subscriptionCount.value == 0) {
+                    showEmergencyNotification(incident)
                 }
             }
         }
+    }
+
+    private fun showEmergencyNotification(incident: DetectedIncident) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("incident_type", incident.type.name)
+            putExtra("confidence", incident.confidenceLevel.name)
+        }
+        
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = when (incident.type) {
+            IncidentType.FALL -> "Fall Detected!"
+            IncidentType.COLLISION -> "Collision Detected!"
+            IncidentType.SHAKE -> "Emergency Triggered!"
+            else -> "SafeSense Alert!"
+        }
+
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText("Tap to open SafeSense and cancel if this is a false alarm.")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setFullScreenIntent(pendingIntent, true) // This makes it "pop up"
+            .build()
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(ALERT_NOTIFICATION_ID, notification)
     }
 
     private fun scheduleHeartbeat() {
@@ -242,7 +317,7 @@ class SensorForegroundService : Service() {
         WorkManager.getInstance(this).cancelUniqueWork(SensorHeartbeatWorker.WORK_NAME)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildStatusNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("SafeSense is active")
             .setContentText("Monitoring your safety")
@@ -252,15 +327,27 @@ class SensorForegroundService : Service() {
             .build()
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
+    private fun createNotificationChannels() {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+
+        // Status channel
+        val statusChannel = NotificationChannel(
             CHANNEL_ID,
-            "SafeSense Sensor Monitor",
+            "SafeSense Status",
             NotificationManager.IMPORTANCE_LOW
+        )
+        manager.createNotificationChannel(statusChannel)
+
+        // Alert channel (High priority)
+        val alertChannel = NotificationChannel(
+            ALERT_CHANNEL_ID,
+            "SafeSense Alerts",
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Keeps SafeSense running in the background"
+            description = "High-priority alerts for emergencies"
+            enableVibration(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        manager.createNotificationChannel(alertChannel)
     }
 }

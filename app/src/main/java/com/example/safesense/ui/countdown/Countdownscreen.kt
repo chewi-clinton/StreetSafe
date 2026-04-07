@@ -216,15 +216,6 @@ private fun CountdownRunningContent(
 
         CancelButton(onCancel = onCancel)
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Shake your phone to cancel too",
-            fontSize = 13.sp,
-            color = White.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center
-        )
-
         Spacer(modifier = Modifier.height(32.dp))
     }
 }

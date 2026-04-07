@@ -60,7 +60,6 @@ class HomeViewModel @Inject constructor(
             val wasMonitoring = prefs[UserPreferences.IS_MONITORING] ?: false
             _uiState.value = _uiState.value.copy(isMonitoring = wasMonitoring)
             
-            // Fix: If state was ON in preferences, ensure the service is actually running
             if (wasMonitoring) {
                 startMonitoring()
             }
@@ -80,6 +79,20 @@ class HomeViewModel @Inject constructor(
             }
             .launchIn(viewModelScope)
 
+        // ── Observe proximity live status ────────────────────────────────────
+        SensorForegroundService.proximityActive
+            .onEach { isActive ->
+                _uiState.value = _uiState.value.copy(proximityActive = isActive)
+            }
+            .launchIn(viewModelScope)
+
+        // ── Observe microphone live status ────────────────────────────────────
+        SensorForegroundService.audioActive
+            .onEach { isActive ->
+                _uiState.value = _uiState.value.copy(audioActive = isActive)
+            }
+            .launchIn(viewModelScope)
+
         // ── Observe incidents from the repository ─────────────────────────────
         incidentRepository.getAllIncidents()
             .onEach { incidents ->
@@ -88,22 +101,18 @@ class HomeViewModel @Inject constructor(
                 val todayIncidents = incidents.filter { now - it.timestampMillis < oneDayMillis }
                 _uiState.value = _uiState.value.copy(
                     recentIncidentCount = todayIncidents.size,
-                    recentIncidents = incidents.take(5) // Show last 5 incidents
+                    recentIncidents = incidents.take(5)
                 )
             }
             .launchIn(viewModelScope)
 
         // ── Observe incidents from the service ────────────────────────────────
-        // This is the global listener that triggers the countdown screen
-        // even if the user is just looking at the home screen.
         SensorForegroundService.incidents
             .onEach { incident ->
                 _events.emit(HomeEvent.NavigateToCountdown(incident))
             }
             .launchIn(viewModelScope)
     }
-
-    // ── Public actions ────────────────────────────────────────────────────────
 
     fun startMonitoring() {
         val intent = Intent(context, SensorForegroundService::class.java).apply {
@@ -119,16 +128,6 @@ class HomeViewModel @Inject constructor(
         }
         context.startService(intent)
         _uiState.value = _uiState.value.copy(isMonitoring = false)
-    }
-
-    fun updateSensorStatus(
-        proximity: Boolean,
-        audio: Boolean
-    ) {
-        _uiState.value = _uiState.value.copy(
-            proximityActive = proximity,
-            audioActive     = audio
-        )
     }
 
     fun setWalkModeActive(active: Boolean) {

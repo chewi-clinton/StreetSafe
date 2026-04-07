@@ -1,8 +1,5 @@
 package com.example.safesense.ui.home
 
-import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorManager
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -51,8 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -96,7 +91,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
 
     // Listen for incidents from the background engine
     LaunchedEffect(Unit) {
@@ -107,17 +101,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    LaunchedEffect(Unit) {
-        val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        // Accelerometer dot now comes from SensorForegroundService.accelerometerActive
-        // GPS dot now comes from GPSTracker.hasValidFix
-        // Only proximity and audio still come from PackageManager/SensorManager here
-        viewModel.updateSensorStatus(
-            proximity = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY) != null,
-            audio     = false
-        )
     }
 
     Scaffold(
