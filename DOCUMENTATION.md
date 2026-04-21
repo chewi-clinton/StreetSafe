@@ -39,7 +39,8 @@
 
 ## 🚨 Problem Statement
 
-Personal safety is a daily concern in **Yaoundé, Cameroon** — a city of over 2.5 million people. Cameroon ranks among the top 15 countries globally on the Numbeo Crime Index (65.7 in 2026), and Yaoundé itself scores a moderate-to-high crime index of 53.6. The UK Foreign Office and U.S. State Department both flag armed robbery, mugging, and violent assault as persistent risks in the capital, particularly in neighborhoods like Briqueterie, Mokolo market, and poorly lit residential areas.
+Personal safety is a daily concern in **Yaoundé, Cameroon** — In many regions, the alarming rise in student kidnappings from schools, the high rate of girls going missing and being raped, and the unique vulnerabilities of epileptic patients—who risk sudden seizures leading to injury or disappearance—have created a severe public safety crisis. Traditional security alert systems are too ineffective to prevent these threats or enable rapid response since most of them require manual pressing of buttons or clicks to send alert.
+Families, schools, and communities urgently need a reliable, real-time technology solution to protect vulnerable individuals, locate missing persons quickly, and provide instant emergency alerts.
 
 The core problem is not just crime — it is the **inability to call for help when it matters most:**
 
